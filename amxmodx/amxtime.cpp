@@ -111,6 +111,6 @@ AMX_NATIVE_INFO time_Natives[] = {
   { "time",      _time },
   { "date",      _date },
   { "tickcount", _tickcount },
-  { NULL, NULL }        /* terminator */
+  { nullptr, nullptr } /* terminator */
 };
 
