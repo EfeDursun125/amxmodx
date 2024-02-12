@@ -17,28 +17,24 @@ const char *invis_cvar_list[5] ={ "amxmodx_version", "amxmodx_modules", "amx_deb
 // create_cvar(const name[], const default_value[], flags = 0, const description[] = "", bool:has_min = false, Float:min_val = 0.0, bool:has_max = false, Float:max_val = 0.0)
 static cell AMX_NATIVE_CALL create_cvar(AMX *amx, cell *params)
 {
-	int length;
-	const char* name     = get_amxstring(amx, params[1], 0, length);
-	const char* value    = get_amxstring(amx, params[2], 1, length);
-	const char* helpText = get_amxstring(amx, params[4], 2, length);
-
-	int flags = params[3];
-
 	CPluginMngr::CPlugin *plugin = g_plugins.findPluginFast(amx);
+	if (!plugin)
+		return 0;
 
+	int length;
+	const char* name = get_amxstring(amx, params[1], 0, length);
+	const char* value = get_amxstring(amx, params[2], 1, length);
+	const char* helpText = get_amxstring(amx, params[4], 2, length);
 	if (CheckBadConList(name, 0))
-	{
 		plugin->AddToFailCounter(1);
-	}
 
-	CvarInfo* info = g_CvarManager.CreateCvar(name, value, plugin->getName(), plugin->getId(), flags, helpText);
-
+	CvarInfo* info = g_CvarManager.CreateCvar(name, value, plugin->getName(), plugin->getId(), params[3], helpText);
 	if (info)
 	{
-		bool hasMin  = params[5] != 0;
-		bool hasMax  = params[7] != 0;
-		float minVal = amx_ctof(params[6]);
-		float maxVal = amx_ctof(params[8]);
+		const bool hasMin  = params[5] != 0;
+		const bool hasMax  = params[7] != 0;
+		const float minVal = amx_ctof(params[6]);
+		const float maxVal = amx_ctof(params[8]);
 		
 		if (hasMin && hasMax)
 		{
@@ -66,26 +62,19 @@ static cell AMX_NATIVE_CALL create_cvar(AMX *amx, cell *params)
 // register_cvar(const name[], const string[], flags=0, Float:fvalue=0.0)
 static cell AMX_NATIVE_CALL register_cvar(AMX *amx, cell *params)
 {
-	int length;
-	const char* name  = get_amxstring(amx, params[1], 0, length);
-	const char* value = get_amxstring(amx, params[2], 1, length);
-
-	int   flags = params[3];
-	float fvalue = amx_ctof(params[4]);
-
 	CPluginMngr::CPlugin *plugin = g_plugins.findPluginFast(amx);
+	if (!plugin)
+		return 0;
 
+	int length;
+	const char* name = get_amxstring(amx, params[1], 0, length);
+	const char* value = get_amxstring(amx, params[2], 1, length);
 	if (CheckBadConList(name, 0))
-	{
 		plugin->AddToFailCounter(1);
-	}
 
-	CvarInfo* info = g_CvarManager.CreateCvar(name, value, plugin->getName(), plugin->getId(), flags);
-
+	CvarInfo* info = g_CvarManager.CreateCvar(name, value, plugin->getName(), plugin->getId(), params[3]);
 	if (info)
-	{
 		return reinterpret_cast<cell>(info->var);
-	}
 
 	return 0;
 }

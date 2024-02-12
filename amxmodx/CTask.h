@@ -17,18 +17,17 @@ private:
 	class CTask
 	{
 		// task settings
-		
 		CPluginMngr::CPlugin *m_pPlugin;
 		cell m_iId;
-		int m_iFunc;
-		int m_iRepeat;
+		cell m_iFunc;
+		int16_t m_iRepeat; // map change will save us :)
 		
 		bool m_bInExecute;
 		bool m_bLoop;
 		bool m_bAfterStart;
 		bool m_bBeforeEnd;
-		float m_fBase;		// for normal tasks, stores the interval, for the others, stores the amount of time before start / after end
-		int m_iParamLen;
+		float m_fBase; // for normal tasks, stores the interval, for the others, stores the amount of time before start / after end
+		int8_t m_iParamLen;
 		
 		cell *m_pParams;
 		bool m_bFree;
@@ -36,50 +35,41 @@ private:
 		// execution
 		float m_fNextExecTime;
 	public:
-		void set(CPluginMngr::CPlugin *pPlugin, int iFunc, int iFlags, cell iId, float fBase, int iParamsLen, const cell *pParams, int iRepeat, float fCurrentTime);
-		void clear();
-		bool isFree() const;
-
-		inline CPluginMngr::CPlugin *getPlugin() const { return m_pPlugin; }
-		inline AMX *getAMX() const { return m_pPlugin->getAMX(); }
-		inline int getTaskId() const { return m_iId; }
-
-		void executeIfRequired(float fCurrentTime, float fTimeLimit, float fTimeLeft);	// also removes the task if needed
-
-		void changeBase(float fNewBase);
-		void resetNextExecTime(float fCurrentTime);
-		inline bool inExecute() const { return m_bInExecute; }
-
-		bool shouldRepeat();
-		
-		inline bool match(int id, AMX *amx)
+		void set(CPluginMngr::CPlugin *pPlugin, const cell iFunc, const int iFlags, cell iId, const float fBase, const int8_t iParamsLen, const cell *pParams, const int16_t iRepeat, const float fCurrentTime);
+		void clear(void);
+		bool isFree(void) const;
+		inline CPluginMngr::CPlugin *getPlugin(void) const { return m_pPlugin; }
+		inline AMX *getAMX(void) const { return m_pPlugin->getAMX(); }
+		inline int getTaskId(void) const { return m_iId; }
+		void executeIfRequired(const float fCurrentTime, const float fTimeLimit, const float fTimeLeft);	// also removes the task if needed
+		void changeBase(const float fNewBase);
+		void resetNextExecTime(const float fCurrentTime);
+		inline bool inExecute(void) const { return m_bInExecute; }
+		bool shouldRepeat(void);
+		inline bool match(const int id, AMX *amx)
 		{
 			return (!m_bFree) && (amx ? getAMX() == amx : true) && (m_iId == id);
 		}
 
-		CTask();
-		~CTask();
+		CTask(void);
+		~CTask(void);
 	};
 
 	/*** CTaskMngr priv members ***/
 	ke::Vector<ke::AutoPtr<CTask>> m_Tasks;
-	
 	float *m_pTmr_CurrentTime;
 	float *m_pTmr_TimeLimit;
 	float *m_pTmr_TimeLeft;
 public:
-	CTaskMngr();
-	~CTaskMngr();
-
+	CTaskMngr(void);
+	~CTaskMngr(void);
 	void registerTimers(float *pCurrentTime, float *pTimeLimit, float *pTimeLeft);	// The timers will always point to the right value
-	void registerTask(CPluginMngr::CPlugin *pPlugin, int iFunc, int iFlags, cell iId, float fBase, int iParamsLen, const cell *pParams, int iRepeat);
-	
-	int removeTasks(int iId, AMX *pAmx);											// remove all tasks that match the id and amx
-	int changeTasks(int iId, AMX *pAmx, float fNewBase);							// change all tasks that match the id and amx
-	bool taskExists(int iId, AMX *pAmx);
-	
-	void startFrame();
-	void clear();
+	void registerTask(CPluginMngr::CPlugin *pPlugin, const int iFunc, const int iFlags, const cell iId, const float fBase, const int iParamsLen, const cell *pParams, const int iRepeat);
+	int removeTasks(const int iId, AMX *pAmx);											// remove all tasks that match the id and amx
+	int changeTasks(const int iId, AMX *pAmx, const float fNewBase);							// change all tasks that match the id and amx
+	bool taskExists(const int iId, AMX *pAmx);
+	void startFrame(void);
+	void clear(void);
 };
 
 #endif //CTASK_H

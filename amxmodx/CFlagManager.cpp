@@ -12,39 +12,31 @@
 #include <sys/stat.h>
 #include "sh_list.h"
 #include "amxmodx.h"
-
 #include "CFlagManager.h"
 
 void CFlagManager::SetFile(const char *Filename)
 {
 	m_strConfigFile = build_pathname("%s/%s", get_localinfo("amxx_configsdir", "addons/amxmodx/configs"), Filename);
-
 	CreateIfNotExist();
 }
 
 const int CFlagManager::LoadFile(const int force)
 {
 	CheckIfDisabled();
-	// If we're disabled get the hell out.  now.
-	if (m_iDisabled)
-	{
+
+	// if we're disabled get the hell out.  now.
+	if (m_bDisabled)
 		return 0;
-	}
+
 	// if we're not forcing this, and NeedToLoad says we dont have to
 	// then just stop
 	if (!force && !NeedToLoad())
-	{
 		return 0;
-	}
 
 	this->Clear();
-
-
-	// We need to load the file
-
+	// we need to load the file
 	FILE *File;
-
-	File=fopen(GetFile(),"r");
+	File = fopen(GetFile(),"r");
 
 	if (!File)
 	{
@@ -52,126 +44,114 @@ const int CFlagManager::LoadFile(const int force)
 		return -1;
 	}
 
-	// Trying to copy this almost exactly as other configs are read...
+	// trying to copy this almost exactly as other configs are read...
 	char Line[512];
 	char TempLine[512];
-
 	char Command[256];
 	char Flags[256];
 
-	
+	// loop cache
+	char* nonconst;
+	char* start;
+	char* end;
+
 	while (!feof(File) && fgets(Line, sizeof(Line), File))
 	{
-		char *nonconst= Line;
+		nonconst = Line;
 
 		// Strip out comments
 		while (*nonconst)
 		{
-			if (*nonconst==';') // End the line at comments
-			{
-				*nonconst='\0';
-			}
+			if (*nonconst == ';') // End the line at comments
+				*nonconst = '\0';
 			else
-			{
 				nonconst++;
-			}
 		}
 
-		Command[0]='\0';
-		Flags[0]='\0';
+		Command[0] = '\0';
+		Flags[0] = '\0';
 
 		// Extract the command
 		strncopy(TempLine, Line, sizeof(TempLine));
 
 		nonconst = TempLine;
 
-		char *start=NULL;
-		char *end=NULL;
+		start = nullptr;
+		end = nullptr;
 
 		// move up line until the first ", mark this down as the start
 		// then find the second " and mark it down as the end
-		while (*nonconst!='\0')
+		while (*nonconst != '\0')
 		{
-			if (*nonconst=='"')
+			if (*nonconst == '"')
 			{
-				if (start==NULL)
-				{
-					start=nonconst+1;
-				}
+				if (!start)
+					start = nonconst + 1;
 				else
 				{
-					end=nonconst;
+					end = nonconst;
 					goto done_with_command;
 				}
 			}
+
 			nonconst++;
 		}
 done_with_command:
 
 		// invalid line?
-		if (start==NULL || end==NULL)
-		{
-			// TODO: maybe warn for an invalid non-commented line?
+		if (!start || !end)
 			continue;
-		}
 
-		*end='\0';
+		*end = '\0';
 
-		strncpy(Command,start,sizeof(Command)-1);
+		strncopy(Command, start, sizeof(Command) - 1);
 
 		// Now do the same thing for the flags
-		nonconst=++end;
+		nonconst = ++end;
 
-		start=NULL;
-		end=NULL;
+		start = nullptr;
+		end = nullptr;
 
 		// move up line until the first ", mark this down as the start
 		// then find the second " and mark it down as the end
-		while (*nonconst!='\0')
+		while (*nonconst != '\0')
 		{
-			if (*nonconst=='"')
+			if (*nonconst == '"')
 			{
-				if (start==NULL)
-				{
-					start=nonconst+1;
-				}
+				if (!start)
+					start = nonconst + 1;
 				else
 				{
-					end=nonconst;
+					end = nonconst;
 					goto done_with_flags;
 				}
 			}
+
 			nonconst++;
 		}
 done_with_flags:
 		// invalid line?
-		if (start==NULL || end==NULL)
-		{
-			// TODO: maybe warn for an invalid non-commented line?
+		if (!start || !end)
 			continue;
-		}
 
-		*end='\0';
+		*end = '\0';
 
-		strncpy(Flags,start,sizeof(Flags)-1);
+		strncopy(Flags, start, sizeof(Flags) - 1);
 
 		//if (!isalnum(*Command))
 		if (*Command == '"' || *Command == '\0')
-		{
 			continue;
-		}
 
 		// Done sucking the command and flags out of the line
 		// now insert this command into the linked list
 
-		AddFromFile(const_cast<const char*>(&Command[0]),&Flags[0]);
+		AddFromFile(const_cast<const char*>(&Command[0]), &Flags[0]);
 
 		nonconst = Line;
 		*nonconst = '\0';
 	}
 
 	fclose(File);
-
 	return 1;
 }
 
@@ -183,7 +163,9 @@ done_with_flags:
  */
 void CFlagManager::AddFromFile(const char *Command, const char *Flags)
 {
-	CFlagEntry *Entry=new CFlagEntry;
+	CFlagEntry *Entry = new(std::nothrow) CFlagEntry;
+	if (!Entry)
+		return;
 
 	Entry->SetName(Command);
 	Entry->SetFlags(Flags);
@@ -195,48 +177,41 @@ void CFlagManager::AddFromFile(const char *Command, const char *Flags)
 
 void CFlagManager::LookupOrAdd(const char *Command, int &Flags, AMX *Plugin)
 {
-	if (m_iDisabled) // if disabled in core.ini stop
-	{
+	if (m_bDisabled) // if disabled in core.ini stop
 		return;
-	}
 	
-	int TempFlags=Flags;
-	if (TempFlags==-1)
+	int TempFlags = Flags;
+	if (TempFlags == -1)
+		TempFlags = 0;
+
+	List<CFlagEntry*>::iterator iter = m_FlagList.begin();
+	const List<CFlagEntry*>::iterator end = m_FlagList.end();
+
+	CFlagEntry* Entry;
+	while (iter != end)
 	{
-		TempFlags=0;
-	}
-
-	List<CFlagEntry *>::iterator	 iter;
-	List<CFlagEntry *>::iterator	 end;
-
-	iter=m_FlagList.begin();
-	end=m_FlagList.end();
-
-	while (iter!=end)
-	{
-		if (strcmp((*iter)->GetName()->chars(),Command)==0)
+		if ((*iter) && strcmp((*iter)->GetName()->chars(), Command) == 0)
 		{
-			CFlagEntry *Entry=(*iter);
-
+			Entry = (*iter);
 			if (Entry->IsHidden()) // "!" flag, exclude this function
-			{
 				return;
-			}
-			// Found, byref the new flags
-			Flags=Entry->Flags();
 
-			// Move it to the back of the list for faster lookup for the rest
+			// found, byref the new flags
+			Flags = Entry->Flags();
+
+			// move it to the back of the list for faster lookup for the rest
 			m_FlagList.erase(iter);
-
 			m_FlagList.push_back(Entry);
 			return;
 		}
+
 		iter++;
 	}
 
 	// was not found, add it
-
-	CFlagEntry *Entry=new CFlagEntry;
+	Entry = new(std::nothrow) CFlagEntry;
+	if (!Entry)
+		return;
 
 	Entry->SetName(Command);
 	Entry->SetFlags(TempFlags);
@@ -244,104 +219,75 @@ void CFlagManager::LookupOrAdd(const char *Command, int &Flags, AMX *Plugin)
 	if (Plugin)
 	{
 		CPluginMngr::CPlugin* a = g_plugins.findPluginFast(Plugin);
-
 		if (a)
-		{
 			Entry->SetComment(a->getName());
-		}
 	}
 
-	// This entry was added from a register_* native
+	// this entry was added from a register_* native
 	// it needs to be written during map change
-	Entry->SetNeedWritten(1);
+	Entry->SetNeedWritten(true);
 
-	// Link it
+	// link it
 	m_FlagList.push_back(Entry);
-
 }
 
 void CFlagManager::WriteCommands(void)
 {
-	if (m_iDisabled)
-	{
+	if (m_bDisabled)
 		return;
-	}
+	
+	FILE *File;
+	int NeedToRead = 0;
 
-	List<CFlagEntry *>::iterator	 iter;
-	List<CFlagEntry *>::iterator	 end;
-	FILE							*File;
-	int								 NeedToRead=0;
-
-	// First off check the modified time of this file
+	// first off check the modified time of this file
 	// if it matches the stored modified time, then update
 	// after we write so we do not re-read next map
 	struct stat TempStat;
-
 	stat(GetFile(), &TempStat);
 
-
-
 	if (TempStat.st_mtime != m_Stat.st_mtime)
-	{
-		NeedToRead=1;
-	};
-
+		NeedToRead = 1;
 
 	File = fopen(GetFile(), "a");
-	
 	if (!File)
-	{
 		return;
-	}
 
-	iter=m_FlagList.begin();
-	end=m_FlagList.end();
-
-
-
-	while (iter!=end)
+	List<CFlagEntry*>::iterator iter = m_FlagList.begin();
+	const List<CFlagEntry*>::iterator end = m_FlagList.end();
+	while (iter != end)
 	{
 		if ((*iter)->NeedWritten())
 		{
 			if ((*iter)->GetComment()->length())
-			{
 				fprintf(File,"\"%s\" \t\"%s\" ; %s\n",(*iter)->GetName()->chars(),(*iter)->GetFlags()->chars(),(*iter)->GetComment()->chars());
-			}
 			else
-			{
 				fprintf(File,"\"%s\" \t\"%s\"\n",(*iter)->GetName()->chars(),(*iter)->GetFlags()->chars());
-			}
-			(*iter)->SetNeedWritten(0);
+
+			(*iter)->SetNeedWritten(false);
 		}
+
 		++iter;
 	}
 
 	fclose(File);
 
 
-	// If NeedToRead was 0, then update the timestamp
-	// that was saved so we do not re-read this file
-	// next map
+	// if NeedToRead was 0, then update the timestamp
+	// that was saved so we do not re-read this file next map
 	if (!NeedToRead)
 	{
 		stat(GetFile(), &TempStat);
-
-		m_Stat.st_mtime=TempStat.st_mtime;
-
+		m_Stat.st_mtime = TempStat.st_mtime;
 	}
-
 }
 
 int CFlagManager::ShouldIAddThisCommand(const AMX *amx, const cell *params, const char *cmdname) const
 {
-	// If flagmanager is disabled then ignore this
-	if (m_iDisabled)
-	{
+	// if flagmanager is disabled then ignore this
+	if (m_bDisabled)
 		return 0;
-	}
 	
-	
-	// If 5th param exists it was compiled after this change was made
+	// if 5th param exists it was compiled after this change was made
 	// if it does not exist, try our logic at the end of this function
 	// 5th param being > 0 means explicit yes
 	// < 0 means auto detect (default is -1), treat it like there was no 5th param
@@ -349,31 +295,20 @@ int CFlagManager::ShouldIAddThisCommand(const AMX *amx, const cell *params, cons
 
 	if ((params[0] / sizeof(cell)) >= 5)
 	{
-		if (params[5]>0) // This command was explicitly told to be included
-		{
+		if (params[5] > 0) // this command was explicitly told to be included
 			return 1;
-		}
-		else if (params[5]==0) // this command was explicitly told to NOT be used
-		{
+		else if (params[5] == 0) // this command was explicitly told to NOT be used
 			return 0;
-		}
 	}
 
 	// auto detect if we should use this command
-
 	// if command access is -1 (default, not set to ADMIN_ALL or any other access), then no
-	if (params[3]==-1)
-	{
+	if (params[3] == -1)
 		return 0;
-	}
-
 
 	// if command is (or starts with) "say", then no
-	if (strncmp(cmdname,"say",3)==0)
-	{
+	if (strncmp(cmdname, "say", 3) == 0)
 		return 0;
-	}
-
 
 	// else use it
 	return 1;
@@ -381,16 +316,13 @@ int CFlagManager::ShouldIAddThisCommand(const AMX *amx, const cell *params, cons
 
 void CFlagManager::Clear(void)
 {
-	List<CFlagEntry *>::iterator	 iter;
-	List<CFlagEntry *>::iterator	 end;
+	List<CFlagEntry*>::iterator	iter = m_FlagList.begin();
+	const List<CFlagEntry*>::iterator end = m_FlagList.end();
 
-	iter=m_FlagList.begin();
-	end=m_FlagList.end();
-
-	while (iter!=end)
+	while (iter != end)
 	{
-		delete (*iter);
-
+		if ((*iter))
+			delete (*iter);
 		++iter;
 	}
 
@@ -399,12 +331,8 @@ void CFlagManager::Clear(void)
 
 void CFlagManager::CheckIfDisabled(void)
 {
-	if (atoi(get_localinfo("disableflagman","0"))==0)
-	{
-		m_iDisabled=0;
-	}
+	if (!atoi(get_localinfo("disableflagman", "0")))
+		m_bDisabled = false;
 	else
-	{
-		m_iDisabled=1;
-	}
+		m_bDisabled = true;
 }

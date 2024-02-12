@@ -27,9 +27,9 @@
 #include <stdarg.h>
 #include "sh_stack.h"
 
-const int FORWARD_MAX_PARAMS = 32;
+#define FORWARD_MAX_PARAMS 32
 
-enum ForwardExecType
+enum ForwardExecType : int8_t
 {
 	ET_IGNORE = 0,					// Ignore return vaue
 	ET_STOP,						// Stop on PLUGIN_HANDLED
@@ -37,7 +37,7 @@ enum ForwardExecType
 	ET_CONTINUE,					// Continue; return biggest return value
 };
 
-enum ForwardParam
+enum ForwardParam : int8_t
 {
 	FP_DONE = -1,					// specify this as the last argument
 									// only tells the function that there are no more arguments
@@ -51,7 +51,7 @@ enum ForwardParam
 };
 
 // for prepareArray
-enum ForwardArrayElemType
+enum ForwardArrayElemType : int8_t
 {
 	Type_Cell = 0,
 	Type_Char
@@ -60,9 +60,7 @@ enum ForwardArrayElemType
 struct ForwardPreparedArray
 {
 	void *ptr;
-	
 	ForwardArrayElemType type;
-	
 	unsigned int size;
 	bool copyBack;
 };
@@ -72,13 +70,13 @@ class CForward
 {
 	const char *m_FuncName;
 	ForwardExecType m_ExecType;
-	int m_NumParams;
+	int8_t m_NumParams;
 	ke::AString m_Name;
 	
 	struct AMXForward
 	{
 		CPluginMngr::CPlugin *pPlugin;
-		int func;
+		cell func;
 	};
 	
 	typedef ke::Vector<AMXForward> AMXForwardList;
@@ -87,27 +85,13 @@ class CForward
 	ForwardParam m_ParamTypes[FORWARD_MAX_PARAMS];
 
 public:
-	CForward(const char *name, ForwardExecType et, int numParams, const ForwardParam * paramTypes);
-	CForward() {}		// leaves everything unitialized'
-	
+	CForward(const char *name, const ForwardExecType et, const int8_t numParams, const ForwardParam * paramTypes);
+	CForward(void) {}		// leaves everything unitialized'
 	cell execute(cell *params, ForwardPreparedArray *preparedArrays);
-	
-	int getParamsNum() const
-	{
-		return m_NumParams;
-	}
-	
-	int getFuncsNum() const
-	{
-		return m_Funcs.length();
-	}
-
-	const char *getFuncName() const
-	{
-		return m_Name.chars();
-	}
-	
-	ForwardParam getParamType(int paramId) const
+	inline int8_t getParamsNum(void) const { return m_NumParams; }
+	inline int getFuncsNum(void) const { return m_Funcs.length(); }
+	inline const char *getFuncName(void) const { return m_Name.chars(); }
+	inline ForwardParam getParamType(const int8_t paramId) const
 	{
 		if (paramId < 0 || paramId >= m_NumParams)
 			return FP_DONE;
@@ -120,42 +104,25 @@ public:
 class CSPForward
 {
 	friend class CForwardMngr;
-	int m_NumParams;
-	
+	int8_t m_NumParams;
 	ForwardParam m_ParamTypes[FORWARD_MAX_PARAMS];
 	AMX *m_Amx;
-	
-	int m_Func;
+	cell m_Func;
 	bool m_HasFunc;
 	ke::AString m_Name;
 	bool m_InExec;
 	bool m_ToDelete;
-
 public:
 	bool isFree;
 public:
-	CSPForward() { m_HasFunc = false; }
-	void Set(const char *funcName, AMX *amx, int numParams, const ForwardParam * paramTypes);
-	void Set(int func, AMX *amx, int numParams, const ForwardParam * paramTypes);
-
+	CSPForward(void) { m_HasFunc = false; }
+	void Set(const char *funcName, AMX *amx, const int8_t numParams, const ForwardParam * paramTypes);
+	void Set(const cell func, AMX *amx, const int8_t numParams, const ForwardParam * paramTypes);
 	cell execute(cell *params, ForwardPreparedArray *preparedArrays);
-	
-	int getParamsNum() const
-	{
-		return m_NumParams;
-	}
-	
-	int getFuncsNum() const
-	{
-		return (m_HasFunc) ? 1 : 0;
-	}
-
-	const char *getFuncName() const
-	{
-		return m_Name.chars();
-	}
-	
-	ForwardParam getParamType(int paramId) const
+	inline int8_t getParamsNum(void) const { return m_NumParams; }
+	inline int getFuncsNum(void) const { return m_HasFunc; }
+	inline const char *getFuncName(void) const { return m_Name.chars(); }
+	inline ForwardParam getParamType(const int8_t paramId) const
 	{
 		if (paramId < 0 || paramId >= m_NumParams)
 			return FP_DONE;
@@ -168,59 +135,56 @@ class CForwardMngr
 {
 	typedef ke::Vector<CForward*> ForwardVec;
 	typedef ke::Vector<CSPForward*> SPForwardVec;
-	typedef CStack<int> FreeSPVec;							// Free SP Forwards
-
+	typedef CStack<cell> FreeSPVec;							// Free SP Forwards
 	ForwardVec m_Forwards;
-
 	SPForwardVec m_SPForwards;
 	FreeSPVec m_FreeSPForwards;								// so we don't have to free memory
-
 	ForwardPreparedArray m_TmpArrays[FORWARD_MAX_PARAMS];	// used by prepareArray
-	int m_TmpArraysNum;
+	cell m_TmpArraysNum;
 public:
 
-	CForwardMngr()
+	CForwardMngr(void)
 	{ m_TmpArraysNum = 0; }
-	~CForwardMngr() {}
+	~CForwardMngr(void) {}
 
 	// Interface
 	// Register normal forward
-	int registerForward(const char *funcName, ForwardExecType et, int numParams, const ForwardParam *paramTypes);
+	int registerForward(const char *funcName, const ForwardExecType et, const int8_t numParams, const ForwardParam *paramTypes);
 	// Register single plugin forward
-	int registerSPForward(const char *funcName, AMX *amx, int numParams, const ForwardParam * paramTypes);
-	int registerSPForward(int func, AMX *amx, int numParams, const ForwardParam * paramTypes);
+	int registerSPForward(const char *funcName, AMX *amx, const int8_t numParams, const ForwardParam * paramTypes);
+	int registerSPForward(const cell func, AMX *amx, const int8_t numParams, const ForwardParam * paramTypes);
 	
 	// Unregister single plugin forward
-	void unregisterSPForward(int id);
-	int duplicateSPForward(int id);
-	int isSameSPForward(int id1, int id2);
+	void unregisterSPForward(const int id);
+	int duplicateSPForward(const int id);
+	int isSameSPForward(const int id1, const int id2);
 	
 	// execute forward
-	cell executeForwards(int id, cell *params);
-	void clear();							// delete all forwards
+	cell executeForwards(const int id, cell *params);
+	void clear(void);							// delete all forwards
 	
-	bool isIdValid(int id) const;			// check whether forward id is valid
-	bool isSPForward(int id) const;			// check whether forward is single plugin
-	int getParamsNum(int id) const;			// get num of params of a forward
-	int getFuncsNum(int id) const;			// get num of found functions of a forward
-	const char *getFuncName(int id) const;	// get the function name
+	inline bool isIdValid(const int id) const { return (id >= 0) && ((id & 1) ? (static_cast<size_t>(id >> 1) < m_SPForwards.length()) : (static_cast<size_t>(id >> 1) < m_Forwards.length())); }
+	bool isSPForward(const int id) const;			// check whether forward is single plugin
+	int getParamsNum(const int id) const;			// get num of params of a forward
+	int getFuncsNum(const int id) const;			// get num of found functions of a forward
+	const char *getFuncName(const int id) const;	// get the function name
 	
-	ForwardParam getParamType(int id, int paramId) const;
-	cell prepareArray(void *ptr, unsigned int size, ForwardArrayElemType type, bool copyBack);		// prepare array
+	ForwardParam getParamType(const int id, const int8_t paramId) const;
+	cell prepareArray(void *ptr, const unsigned int size, const ForwardArrayElemType type, const bool copyBack);		// prepare array
 };
 
 // (un)register forward
-int registerForward(const char *funcName, ForwardExecType et, ...);
-int registerForwardC(const char *funcName, ForwardExecType et, cell *list, size_t num);
+int registerForward(const char *funcName, const ForwardExecType et, ...);
+int registerForwardC(const char *funcName, const ForwardExecType et, cell *list, const int8_t num);
 int registerSPForwardByName(AMX *amx, const char *funcName, ...);
-int registerSPForwardByNameC(AMX *amx, const char *funcName, cell *list, size_t num);
-int registerSPForward(AMX *amx, int func, ...);
-void unregisterSPForward(int id);
+int registerSPForwardByNameC(AMX *amx, const char *funcName, cell *list, const int8_t num);
+int registerSPForward(AMX *amx, const int func, ...);
+void unregisterSPForward(const int id);
 
 // execute forwards
-cell executeForwards(int id, ...);
+cell executeForwards(const int id, ...);
 // prepare array
-cell prepareCellArray(cell *ptr, unsigned int size, bool copyBack = false);
-cell prepareCharArray(char *ptr, unsigned int size, bool copyBack = false);
+cell prepareCellArray(cell *ptr, const unsigned int size, const bool copyBack = false);
+cell prepareCharArray(char *ptr, const unsigned int size, const bool copyBack = false);
 
 #endif //FORWARD_H

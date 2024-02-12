@@ -35,15 +35,17 @@
 #include <resdk/mod_rehlds_api.h>
 #include <amtl/am-utility.h>
 
+#include <clib.h>
+
 plugin_info_t Plugin_info =
 {
 	META_INTERFACE_VERSION,		// ifvers
-	"AMX Mod X",				// name
+	"AMX Mod XU",				// name
 	AMXX_VERSION,			// version
 	__DATE__,					// date
-	"AMX Mod X Dev Team",		// author
+	"AMX Mod X Dev Team & EfeDursun125",		// author
 	"http://www.amxmodx.org",	// url
-	"AMXX",						// logtag
+	"AMXXU",						// logtag
 	PT_STARTUP,					// (when) loadable
 	PT_ANYTIME,					// (when) unloadable
 };
@@ -137,14 +139,14 @@ cvar_t init_amxmodx_language = {"amx_language", "en", FCVAR_SERVER};
 cvar_t init_amxmodx_cl_langs = {"amx_client_languages", "1", FCVAR_SERVER};
 cvar_t init_amxmodx_perflog = { "amx_perflog_ms", "1.0", FCVAR_SPONLY };
 
-cvar_t* amxmodx_version = NULL;
-cvar_t* amxmodx_modules = NULL;
-cvar_t* amxmodx_debug = NULL;
-cvar_t* amxmodx_language = NULL;
-cvar_t* amxmodx_perflog = NULL;
+cvar_t* amxmodx_version = nullptr;
+cvar_t* amxmodx_modules = nullptr;
+cvar_t* amxmodx_debug = nullptr;
+cvar_t* amxmodx_language = nullptr;
+cvar_t* amxmodx_perflog = nullptr;
 
-cvar_t* hostname = NULL;
-cvar_t* mp_timelimit = NULL;
+cvar_t* hostname = nullptr;
+cvar_t* mp_timelimit = nullptr;
 
 // main forwards
 int FF_ClientCommand = -1;
@@ -169,12 +171,13 @@ HLTypeConversion TypeConversion;
 
 bool ColoredMenus(const char *ModName)
 {
+	size_t i;
 	const char * pModNames[] = { "cstrike", "czero", "dmc", "dod", "tfc", "valve" };
 	const size_t ModsCount = sizeof(pModNames) / sizeof(const char *);
 
-	for (size_t i = 0; i < ModsCount; ++i)
+	for (i = 0; i < ModsCount; ++i)
 	{
-		if (strcmp(ModName, pModNames[i]) == 0)
+		if (cstrcmp(ModName, pModNames[i]) == 0)
 			return true; // this game modification currently supports colored menus
 	}
 
@@ -187,11 +190,12 @@ void ParseAndOrAdd(CStack<ke::AString *> & files, const char *name)
 	{
 #if !defined WIN32
 		size_t len = strlen(name);
-		if (strcmp(&name[len-4], ".ini") == 0)
+		if (cstrcmp(&name[len-4], ".ini") == 0)
 		{
 #endif
-			ke::AString *pString = new ke::AString(name);
-			files.push(pString);
+			ke::AString *pString = new(std::nothrow) ke::AString(name);
+			if (pString)
+				files.push(pString);
 #if !defined WIN32
 		}
 #endif
@@ -205,16 +209,11 @@ void BuildPluginFileList(const char *initialdir, CStack<ke::AString *> & files)
 	build_pathname_r(path, sizeof(path), "%s/*.ini", initialdir);
 	_finddata_t fd;
 	intptr_t handle = _findfirst(path, &fd);
-
 	if (handle < 0)
-	{
 		return;
-	}
 
 	while (!_findnext(handle, &fd))
-	{
 		ParseAndOrAdd(files, fd.name);
-	}
 
 	_findclose(handle);
 #elif defined(__linux__) || defined(__APPLE__)
@@ -222,15 +221,11 @@ void BuildPluginFileList(const char *initialdir, CStack<ke::AString *> & files)
 	struct dirent *ep;
 	DIR *dp;
 
-	if ((dp = opendir(path)) == NULL)
-	{
+	if (!(dp = opendir(path)))
 		return;
-	}
 
-	while ( (ep=readdir(dp)) != NULL )
-	{
+	while ((ep = readdir(dp)))
 		ParseAndOrAdd(files, ep->d_name);
-	}
 
 	closedir (dp);
 #endif
@@ -319,9 +314,7 @@ int	C_InconsistentFile(const edict_t *player, const char *filename, char *discon
 	if (MDLL_InconsistentFile(player, filename, disconnect_message))
 	{
 		CPlayer	*pPlayer = GET_PLAYER_POINTER((edict_t *)player);
-
-		if (executeForwards(FF_InconsistentFile, static_cast<cell>(pPlayer->index),
-			filename, disconnect_message) == 1)
+		if (executeForwards(FF_InconsistentFile, static_cast<cell>(pPlayer->index), filename, disconnect_message) == 1)
 			RETURN_META_VALUE(MRES_SUPERCEDE, FALSE);
 
 		RETURN_META_VALUE(MRES_SUPERCEDE, TRUE);
@@ -333,11 +326,8 @@ int	C_InconsistentFile(const edict_t *player, const char *filename, char *discon
 const char*	get_localinfo(const char* name, const char* def)
 {
 	const char* b = LOCALINFO((char*)name);
-
 	if (b == 0 || *b == 0)
-	{
 		SET_LOCALINFO((char*)name, (char*)(b = def));
-	}
 
 	return b;
 }
@@ -345,14 +335,10 @@ const char*	get_localinfo(const char* name, const char* def)
 const char*	get_localinfo_r(const char *name, const char *def, char buffer[], size_t maxlength)
 {
 	const char* b = LOCALINFO((char*)name);
-
 	if (b == 0 || *b == 0)
-	{
 		SET_LOCALINFO((char*)name, (char*)(b = def));
-	}
 
 	ke::SafeSprintf(buffer, maxlength, "%s", b);
-
 	return buffer;
 }
 
@@ -363,38 +349,29 @@ const char*	get_localinfo_r(const char *name, const char *def, char buffer[], si
 int	C_Spawn(edict_t *pent)
 {
 	if (g_initialized)
-	{
 		RETURN_META_VALUE(MRES_IGNORED, 0);
-	}
 
 	g_activated = false;
 	g_initialized = true;
 	g_forcedmodules = false;
 	g_forcedsounds = false;
-
 	g_srvindex = IS_DEDICATED_SERVER() ? 0 : 1;
-
 	hostname = CVAR_GET_POINTER("hostname");
 	mp_timelimit = CVAR_GET_POINTER("mp_timelimit");
 
-	// Fix for crashing on mods that do not have mp_timelimit
-	if (mp_timelimit == NULL)
+	// fix for crashing on mods that do not have mp_timelimit
+	if (!mp_timelimit)
 	{
 		static cvar_t timelimit_holder;
-
 		timelimit_holder.name = "mp_timelimit";
 		timelimit_holder.string = "0";
 		timelimit_holder.flags = 0;
 		timelimit_holder.value = 0.0;
-
 		CVAR_REGISTER(&timelimit_holder);
-
 		mp_timelimit = &timelimit_holder;
-
 	}
 
 	g_forwards.clear();
-
 	g_log.MapChange();
 
 	// ###### Initialize task manager
@@ -448,7 +425,7 @@ int	C_Spawn(edict_t *pent)
 	ke::SafeSprintf(temporaryMap, sizeof(temporaryMap), "%s", STRING(gpGlobals->mapname));
 
 	prefixed_map_pluginsfile[0] = '\0';
-	if ((tmap_ptr = strchr(temporaryMap, '_')) != NULL)
+	if ((tmap_ptr = strchr(temporaryMap, '_')))
 	{
 		// this map has a prefix
 
@@ -491,9 +468,9 @@ int	C_Spawn(edict_t *pent)
 	g_players_num = 0;
 
 	// Set server flags
-	memset(g_players[0].flags, -1, sizeof(g_players[0].flags));
+	cmemset(g_players[0].flags, -1, sizeof(g_players[0].flags));
 
-	g_opt_level = atoi(get_localinfo("optimizer", "7"));
+	g_opt_level = catoi(get_localinfo("optimizer", "7"));
 	if (!g_opt_level)
 		g_opt_level = 7;
 
@@ -502,9 +479,7 @@ int	C_Spawn(edict_t *pent)
 	LoadExtraPluginsFromDir(configs_dir);
 	g_plugins.loadPluginsFromFile(map_pluginsfile_path, false);
 	if (prefixed_map_pluginsfile[0] != '\0')
-	{
 		g_plugins.loadPluginsFromFile(prefixed_map_pluginsfile, false);
-	}
 
 	g_plugins.Finalize();
 	g_plugins.InvalidateCache();
@@ -591,11 +566,12 @@ struct sUserMsg
 
 int	C_RegUserMsg_Post(const char *pszName, int iSize)
 {
-	for (int i = 0; g_user_msg[i].name;	++i)
+	int i, id;
+	for (i = 0; g_user_msg[i].name;	++i)
 	{
-		if (strcmp(g_user_msg[i].name, pszName) == 0)
+		if (cstrcmp(g_user_msg[i].name, pszName) == 0)
 		{
-			int id = META_RESULT_ORIG_RET(int);
+			id = META_RESULT_ORIG_RET(int);
 			*g_user_msg[i].id =	id;
 
 			if (!g_user_msg[i].cstrike || g_bmod_cstrike)
@@ -605,6 +581,7 @@ int	C_RegUserMsg_Post(const char *pszName, int iSize)
 				else
 					modMsgs[id] = g_user_msg[i].func;
 			}
+
 			break;
 		}
 	 }
@@ -619,14 +596,13 @@ plugin_init	forward	function from plugins
 */
 void C_ServerActivate(edict_t *pEdictList, int edictCount, int clientMax)
 {
+	int i;
 	int id;
-
-	for (int i = 0; g_user_msg[i].name;	++i)
+	for (i = 0; g_user_msg[i].name;	++i)
 	{
 		if ((*g_user_msg[i].id == 0) && (id = GET_USER_MSG_ID(PLID, g_user_msg[i].name, NULL)) != 0)
 		{
 			*g_user_msg[i].id =	id;
-
 			if (!g_user_msg[i].cstrike || g_bmod_cstrike)
 			{
 				if (g_user_msg[i].endmsg)
@@ -642,13 +618,9 @@ void C_ServerActivate(edict_t *pEdictList, int edictCount, int clientMax)
 		if (!g_isDropClientHookEnabled)
 		{
 			if (RehldsApi)
-			{
 				RehldsHookchains->SV_DropClient()->registerHook(SV_DropClient_RH);
-			}
 			else
-			{
 				DropClientDetour->EnableDetour();
-			}
 			g_isDropClientHookEnabled = true;
 		}
 	}
@@ -661,11 +633,9 @@ void C_ServerActivate_Post(edict_t *pEdictList, int edictCount, int clientMax)
 	if (g_activated)
 		RETURN_META(MRES_IGNORED);
 
-	for (int i = 1; i <= gpGlobals->maxClients; ++i)
-	{
-		CPlayer	*pPlayer = GET_PLAYER_POINTER_I(i);
-		pPlayer->Init(pEdictList + i, i);
-	}
+	int i;
+	for (i = 1; i <= gpGlobals->maxClients; ++i)
+		GET_PLAYER_POINTER_I(i)->Init(pEdictList + i, i);
 
 	CoreCfg.ExecuteMainConfig();    // Execute amxx.cfg
 
@@ -700,32 +670,31 @@ void C_ServerDeactivate()
 	if (!g_activated)
 		RETURN_META(MRES_IGNORED);
 
-	for (int i = 1; i <= gpGlobals->maxClients; ++i)
+	int i;
+	CPlayer* pPlayer;
+	bool wasDisconnecting;
+	for (i = 1; i <= gpGlobals->maxClients; ++i)
 	{
-		CPlayer	*pPlayer = GET_PLAYER_POINTER_I(i);
-
+		pPlayer = GET_PLAYER_POINTER_I(i);
 		if (pPlayer->initialized)
 		{
-			// deprecated
-			executeForwards(FF_ClientDisconnect, static_cast<cell>(pPlayer->index));
-
 			if (g_isDropClientHookAvailable && !pPlayer->disconnecting)
 			{
+				// deprecated
+				executeForwards(FF_ClientDisconnect, static_cast<cell>(pPlayer->index));
 				executeForwards(FF_ClientDisconnected, static_cast<cell>(pPlayer->index), FALSE, prepareCharArray(const_cast<char*>(""), 0), 0);
 			}
 		}
 
 		if (pPlayer->ingame)
 		{
-			auto wasDisconnecting = pPlayer->disconnecting;
+			wasDisconnecting = pPlayer->disconnecting;
 
 			pPlayer->Disconnect();
 			--g_players_num;
 
 			if (!wasDisconnecting && g_isDropClientHookAvailable)
-			{
 				executeForwards(FF_ClientRemove, static_cast<cell>(pPlayer->index), FALSE, const_cast<char*>(""));
-			}
 		}
 	}
 
@@ -734,20 +703,15 @@ void C_ServerDeactivate()
 		if (g_isDropClientHookEnabled)
 		{
 			if (RehldsApi)
-			{
 				RehldsHookchains->SV_DropClient()->unregisterHook(SV_DropClient_RH);
-			}
 			else
-			{
 				DropClientDetour->DisableDetour();
-			}
 			g_isDropClientHookEnabled = false;
 		}
 	}
 
 	g_players_num	= 0;
 	executeForwards(FF_PluginEnd);
-
 	RETURN_META(MRES_IGNORED);
 }
 
@@ -879,15 +843,17 @@ BOOL C_ClientConnect_Post(edict_t *pEntity, const char *pszName, const char *psz
 	CPlayer* pPlayer = GET_PLAYER_POINTER(pEntity);
 	if (!pPlayer->IsBot())
 	{
-		bool a = pPlayer->Connect(pszName, pszAddress);
+		const bool a = pPlayer->Connect(pszName, pszAddress);
 		executeForwards(FF_ClientConnect, static_cast<cell>(pPlayer->index));
 
 		if (a)
 		{
-			auto playerToAuth = ke::AutoPtr<CPlayer *>(new CPlayer*(pPlayer));
+			auto playerToAuth = ke::AutoPtr<CPlayer *>(new(std::nothrow) CPlayer*(pPlayer));
 			if (playerToAuth)
 				g_auth.append(ke::Move(playerToAuth));
-		} else {
+		}
+		else
+		{
 			pPlayer->Authorize();
 			const char* authid = GETPLAYERAUTHID(pEntity);
 			if (g_auth_funcs.size())
@@ -900,6 +866,7 @@ BOOL C_ClientConnect_Post(edict_t *pEntity, const char *pszName, const char *psz
 					fn(pPlayer->index, authid);
 				}
 			}
+
 			executeForwards(FF_ClientAuthorized, static_cast<cell>(pPlayer->index), authid);
 		}
 	}
@@ -909,9 +876,7 @@ BOOL C_ClientConnect_Post(edict_t *pEntity, const char *pszName, const char *psz
 
 BOOL C_ClientConnect(edict_t *pEntity, const char *pszName, const char *pszAddress, char szRejectReason[128])
 {
-	CPlayer* pPlayer = GET_PLAYER_POINTER(pEntity);
-
-	if(executeForwards(FF_ClientConnectEx, static_cast<cell>(pPlayer->index), pszName, pszAddress, prepareCharArray(szRejectReason, 128, true)))
+	if (executeForwards(FF_ClientConnectEx, static_cast<cell>(GET_PLAYER_POINTER(pEntity)->index), pszName, pszAddress, prepareCharArray(szRejectReason, 128, true)))
 		RETURN_META_VALUE(MRES_SUPERCEDE, FALSE);
 
 	RETURN_META_VALUE(MRES_IGNORED, TRUE);
@@ -920,31 +885,23 @@ BOOL C_ClientConnect(edict_t *pEntity, const char *pszName, const char *pszAddre
 void C_ClientDisconnect(edict_t *pEntity)
 {
 	CPlayer *pPlayer = GET_PLAYER_POINTER(pEntity);
-
 	if (pPlayer->initialized)
 	{
-		// deprecated
-		executeForwards(FF_ClientDisconnect, static_cast<cell>(pPlayer->index));
-
 		if (g_isDropClientHookAvailable && !pPlayer->disconnecting)
 		{
+			// deprecated
+			executeForwards(FF_ClientDisconnect, static_cast<cell>(pPlayer->index));
 			executeForwards(FF_ClientDisconnected, static_cast<cell>(pPlayer->index), FALSE, prepareCharArray(const_cast<char*>(""), 0), 0);
 		}
 	}
 
 	if (pPlayer->ingame)
-	{
 		--g_players_num;
-	}
 
-	auto wasDisconnecting = pPlayer->disconnecting;
-
+	const bool wasDisconnecting = pPlayer->disconnecting;
 	pPlayer->Disconnect();
-
 	if (!wasDisconnecting && g_isDropClientHookAvailable)
-	{
 		executeForwards(FF_ClientRemove, static_cast<cell>(pPlayer->index), FALSE, const_cast<char*>(""));
-	}
 
 	RETURN_META(MRES_IGNORED);
 }
@@ -952,13 +909,13 @@ void C_ClientDisconnect(edict_t *pEntity)
 CPlayer* SV_DropClient_PreHook(edict_s *client, qboolean crash, const char *buffer, size_t buffer_size)
 {
 	auto pPlayer = client ? GET_PLAYER_POINTER(client) : nullptr;
-
 	if (pPlayer)
 	{
 		if (pPlayer->initialized)
 		{
 			pPlayer->disconnecting = true;
-			executeForwards(FF_ClientDisconnected, pPlayer->index, TRUE, prepareCharArray(const_cast<char*>(buffer), buffer_size, true), buffer_size - 1);
+			executeForwards(FF_ClientDisconnect, static_cast<cell>(pPlayer->index));
+			executeForwards(FF_ClientDisconnected, static_cast<cell>(pPlayer->index), TRUE, prepareCharArray(const_cast<char*>(buffer), buffer_size, true), buffer_size - 1);
 		}
 	}
 
@@ -978,16 +935,12 @@ void SV_DropClient_PostHook(CPlayer *pPlayer, qboolean crash, const char *buffer
 DETOUR_DECL_STATIC3_VAR(SV_DropClient, void, client_t*, cl, qboolean, crash, const char*, format)
 {
 	char buffer[1024];
-
 	va_list ap;
 	va_start(ap, format);
 	ke::SafeVsprintf(buffer, sizeof(buffer) - 1, format, ap);
 	va_end(ap);
-
 	auto pPlayer = SV_DropClient_PreHook(cl->edict, crash, buffer, ARRAY_LENGTH(buffer));
-
 	DETOUR_STATIC_CALL(SV_DropClient)(cl, crash, "%s", buffer);
-
 	SV_DropClient_PostHook(pPlayer, crash, buffer);
 }
 
@@ -995,11 +948,8 @@ void SV_DropClient_RH(IRehldsHook_SV_DropClient *chain, IGameClient *cl, bool cr
 {
 	char buffer[1024];
 	ke::SafeStrcpy(buffer, sizeof(buffer), format);
-
 	auto pPlayer = SV_DropClient_PreHook(cl->GetEdict(), crash, buffer, ARRAY_LENGTH(buffer));
-
 	chain->callNext(cl, crash, buffer);
-
 	SV_DropClient_PostHook(pPlayer, crash, buffer);
 }
 
@@ -1024,30 +974,28 @@ void C_ClientUserInfoChanged_Post(edict_t *pEntity, char *infobuffer)
 
 	// Emulate bot connection and putinserver
 	if (pPlayer->ingame)
+		pPlayer->name =name; //	Make sure player have name up to date
+	else if (pPlayer->IsBot())
 	{
-		pPlayer->name =name;			//	Make sure player have name up to date
-	} else if (pPlayer->IsBot()) {
 		pPlayer->Connect(name, "127.0.0.1"/*CVAR_GET_STRING("net_address")*/);
-
 		executeForwards(FF_ClientConnect, static_cast<cell>(pPlayer->index));
 
 		pPlayer->Authorize();
 		const char* authid = GETPLAYERAUTHID(pEntity);
 		if (g_auth_funcs.size())
 		{
-			List<AUTHORIZEFUNC>::iterator iter, end=g_auth_funcs.end();
+			List<AUTHORIZEFUNC>::iterator iter, end = g_auth_funcs.end();
 			AUTHORIZEFUNC fn;
-			for (iter=g_auth_funcs.begin(); iter!=end; iter++)
+			for (iter = g_auth_funcs.begin(); iter != end; iter++)
 			{
 				fn = (*iter);
 				fn(pPlayer->index, authid);
 			}
 		}
-		executeForwards(FF_ClientAuthorized, static_cast<cell>(pPlayer->index), authid);
 
+		executeForwards(FF_ClientAuthorized, static_cast<cell>(pPlayer->index), authid);
 		pPlayer->PutInServer();
 		++g_players_num;
-
 		executeForwards(FF_ClientPutInServer, static_cast<cell>(pPlayer->index));
 	}
 
@@ -1057,7 +1005,6 @@ void C_ClientUserInfoChanged_Post(edict_t *pEntity, char *infobuffer)
 void C_ClientCommand(edict_t *pEntity)
 {
 	CPlayer *pPlayer = GET_PLAYER_POINTER(pEntity);
-
 	META_RES result = MRES_IGNORED;
 	cell ret = 0;
 
@@ -1067,10 +1014,10 @@ void C_ClientCommand(edict_t *pEntity)
 	// Handle "amxx" if not on listenserver
 	if (IS_DEDICATED_SERVER())
 	{
-		if (cmd && stricmp(cmd, "amxx") == 0)
+		if (cmd && cstricmp(cmd, "amxx") == 0)
 		{
 			// Print version
-			static char buf[1024];
+			char buf[1024];
 			size_t len = 0;
 
 			sprintf(buf, "%s %s\n", Plugin_info.name, Plugin_info.version);
@@ -1110,20 +1057,21 @@ void C_ClientCommand(edict_t *pEntity)
 	{
 		if ((*aa).matchCommandLine(cmd, arg) && (*aa).getPlugin()->isExecutable((*aa).getFunction()))
 		{
-			ret = executeForwards((*aa).getFunction(), static_cast<cell>(pPlayer->index),
-				static_cast<cell>((*aa).getFlags()), static_cast<cell>((*aa).getId()));
-			if (ret & 2) result = MRES_SUPERCEDE;
-			if (ret & 1) RETURN_META(MRES_SUPERCEDE);
+			ret = executeForwards((*aa).getFunction(), static_cast<cell>(pPlayer->index), static_cast<cell>((*aa).getFlags()), static_cast<cell>((*aa).getId()));
+			if (ret & 2)
+				result = MRES_SUPERCEDE;
+			else if (ret & 1)
+				RETURN_META(MRES_SUPERCEDE);
 		}
 		++aa;
 	}
 
 	/* check menu commands */
 
-	if (!strcmp(cmd, "menuselect"))
+	if (!cstrcmp(cmd, "menuselect"))
 	{
-		int	pressed_key	= atoi(arg) - 1;
-		int	bit_key	= (1<<pressed_key);
+		const int pressed_key = catoi(arg) - 1;
+		const int bit_key = (1 << pressed_key);
 
 		if (pPlayer->keys &	bit_key)
 		{
@@ -1132,7 +1080,6 @@ void C_ClientCommand(edict_t *pEntity)
 				if (Menu *pMenu = get_menu_by_id(pPlayer->newmenu))
 				{
 					pMenu->Close(pPlayer->index);
-
 					RETURN_META(MRES_SUPERCEDE);
 				}
 				else if (pPlayer->menu > 0 && !pPlayer->vgui)
@@ -1155,26 +1102,28 @@ void C_ClientCommand(edict_t *pEntity)
 				pPlayer->newmenu = -1;
 				if (Menu *pMenu = get_menu_by_id(menu))
 				{
-					int item = pMenu->PagekeyToItem(pPlayer->page, pressed_key+1);
+					int item = pMenu->PagekeyToItem(pPlayer->page, pressed_key + 1);
 					if (item == MENU_BACK)
 					{
 						if (pMenu->pageCallback >= 0)
 							executeForwards(pMenu->pageCallback, static_cast<cell>(pPlayer->index), static_cast<cell>(MENU_BACK), static_cast<cell>(menu));
 
 						pMenu->Display(pPlayer->index, pPlayer->page - 1);
-					} else if (item == MENU_MORE) {
+					}
+					else if (item == MENU_MORE)
+					{
 						if (pMenu->pageCallback >= 0)
 							executeForwards(pMenu->pageCallback, static_cast<cell>(pPlayer->index), static_cast<cell>(MENU_MORE), static_cast<cell>(menu));
 
 						pMenu->Display(pPlayer->index, pPlayer->page + 1);
-					} else {
+					}
+					else
+					{
 						ret = executeForwards(pMenu->func, static_cast<cell>(pPlayer->index), static_cast<cell>(menu), static_cast<cell>(item));
 						if (ret & 2)
-						{
 							result = MRES_SUPERCEDE;
-						} else if (ret & 1) {
+						else if (ret & 1)
 							RETURN_META(MRES_SUPERCEDE);
-						}
 					}
 					/**
 					 * No matter what we marked it as executed, since the callback styles are
@@ -1196,18 +1145,18 @@ void C_ClientCommand(edict_t *pEntity)
 						|| !g_forwards.isSameSPForward(func_was_executed, (*a).getFunction()))
 					)
 				{
-					ret = executeForwards((*a).getFunction(), static_cast<cell>(pPlayer->index),
-						static_cast<cell>(pressed_key), 0);
+					ret = executeForwards((*a).getFunction(), static_cast<cell>(pPlayer->index), static_cast<cell>(pressed_key), 0);
 
-					if (ret & 2) result = MRES_SUPERCEDE;
-					if (ret & 1) RETURN_META(MRES_SUPERCEDE);
+					if (ret & 2)
+						result = MRES_SUPERCEDE;
+					else if (ret & 1)
+						RETURN_META(MRES_SUPERCEDE);
 				}
+
 				if (g_menucmds.GetWatchIter() != a)
-				{
 					a = g_menucmds.GetWatchIter();
-				} else {
+				else
 					++a;
-				}
 			}
 		}
 	}
@@ -1234,19 +1183,20 @@ void C_StartFrame_Post(void)
 				continue;
 			}
 
-			if (strcmp(auth, "STEAM_ID_PENDING"))
+			if (cstrcmp(auth, "STEAM_ID_PENDING"))
 			{
 				(*player)->Authorize();
 				if (g_auth_funcs.size())
 				{
-					List<AUTHORIZEFUNC>::iterator iter, end=g_auth_funcs.end();
+					List<AUTHORIZEFUNC>::iterator iter, end = g_auth_funcs.end();
 					AUTHORIZEFUNC fn;
-					for (iter=g_auth_funcs.begin(); iter!=end; iter++)
+					for (iter = g_auth_funcs.begin(); iter!=end; iter++)
 					{
 						fn = (*iter);
 						fn((*player)->index, auth);
 					}
 				}
+
 				executeForwards(FF_ClientAuthorized, static_cast<cell>((*player)->index), auth);
 				g_auth.remove(i);
 
@@ -1318,9 +1268,7 @@ void C_StartFrame_Post(void)
 
 	g_task_time = gpGlobals->time + 0.1f;
 	g_tasksMngr.startFrame();
-
 	CoreCfg.OnMapConfigTimer();
-
 	RETURN_META(MRES_IGNORED);
 }
 
@@ -1330,7 +1278,9 @@ void C_MessageBegin_Post(int msg_dest, int msg_type, const float *pOrigin, edict
 	{
 		mPlayerIndex = ENTINDEX(ed);
 		mPlayer	= GET_PLAYER_POINTER_I(mPlayerIndex);
-	} else {
+	}
+	else
+	{
 		mPlayerIndex = 0;
 		mPlayer	= 0;
 	}
@@ -1341,81 +1291,79 @@ void C_MessageBegin_Post(int msg_dest, int msg_type, const float *pOrigin, edict
 	mState = 0;
 	function = modMsgs[msg_type];
 	endfunction = modMsgsEnd[msg_type];
-
 	g_events.parserInit(msg_type, &gpGlobals->time, mPlayer, mPlayerIndex);
-
 	RETURN_META(MRES_IGNORED);
 }
 
 void C_WriteByte_Post(int iValue)
 {
 	g_events.parseValue(iValue);
-	if (function) (*function)((void *)&iValue);
-
+	if (function)
+		(*function)((void *)&iValue);
 	RETURN_META(MRES_IGNORED);
 }
 
 void C_WriteChar_Post(int iValue)
 {
 	g_events.parseValue(iValue);
-	if (function) (*function)((void *)&iValue);
-
+	if (function)
+		(*function)((void *)&iValue);
 	RETURN_META(MRES_IGNORED);
 }
 
 void C_WriteShort_Post(int iValue)
 {
 	g_events.parseValue(iValue);
-	if (function) (*function)((void *)&iValue);
-
+	if (function)
+		(*function)((void *)&iValue);
 	RETURN_META(MRES_IGNORED);
 }
 
 void C_WriteLong_Post(int iValue)
 {
 	g_events.parseValue(iValue);
-	if (function) (*function)((void *)&iValue);
-
+	if (function)
+		(*function)((void *)&iValue);
 	RETURN_META(MRES_IGNORED);
 }
 
 void C_WriteAngle_Post(float flValue)
 {
 	g_events.parseValue(flValue);
-	if (function) (*function)((void *)&flValue);
-
+	if (function)
+		(*function)((void *)&flValue);
 	RETURN_META(MRES_IGNORED);
 }
 
 void C_WriteCoord_Post(float flValue)
 {
 	g_events.parseValue(flValue);
-	if (function) (*function)((void *)&flValue);
-
+	if (function)
+		(*function)((void *)&flValue);
 	RETURN_META(MRES_IGNORED);
 }
 
 void C_WriteString_Post(const char *sz)
 {
 	g_events.parseValue(sz);
-	if (function) (*function)((void *)sz);
-
+	if (function)
+		(*function)((void *)sz);
 	RETURN_META(MRES_IGNORED);
 }
 
 void C_WriteEntity_Post(int iValue)
 {
 	g_events.parseValue(iValue);
-	if (function) (*function)((void *)&iValue);
-
+	if (function)
+		(*function)((void *)&iValue);
 	RETURN_META(MRES_IGNORED);
 }
 
 void C_MessageEnd_Post(void)
 {
 	g_events.executeEvents();
-	if (endfunction) (*endfunction)(NULL);
-
+	if (endfunction)
+		(*endfunction)(nullptr);
 	RETURN_META(MRES_IGNORED);
 }
 
@@ -1426,7 +1374,7 @@ const char *C_Cmd_Args(void)
 		RETURN_META_VALUE(MRES_SUPERCEDE, (g_fakecmd.argc > 1) ? g_fakecmd.args : g_fakecmd.argv[0]);
 
 	// otherwise ignore it
-	RETURN_META_VALUE(MRES_IGNORED, NULL);
+	RETURN_META_VALUE(MRES_IGNORED, nullptr);
 }
 
 const char *C_Cmd_Argv(int argc)
@@ -1436,7 +1384,7 @@ const char *C_Cmd_Argv(int argc)
 		RETURN_META_VALUE(MRES_SUPERCEDE, (argc < 3) ? g_fakecmd.argv[argc] : "");
 
 	// otherwise ignore it
-	RETURN_META_VALUE(MRES_IGNORED, NULL);
+	RETURN_META_VALUE(MRES_IGNORED, nullptr);
 }
 
 int	C_Cmd_Argc(void)
@@ -1453,15 +1401,11 @@ int	C_Cmd_Argc(void)
 // Only	here we	may	find out who is	an owner.
 void C_SetModel(edict_t *e, const char *m)
 {
-	if (!m || strcmp(m, "models/w_hegrenade.mdl") != 0)
-	{
+	if (!m || cstrcmp(m, "models/w_hegrenade.mdl") != 0)
 		RETURN_META(MRES_IGNORED);
-	}
 
 	if (e->v.owner)
-	{
 		g_grenades.put(e, 1.75f, 4, GET_PLAYER_POINTER(e->v.owner));
-	}
 
 	RETURN_META(MRES_IGNORED);
 }
@@ -1485,9 +1429,7 @@ void C_TraceLine_Post(const float *v1, const float *v2, int fNoMonsters, edict_t
 void C_AlertMessage(ALERT_TYPE atype, const char *szFmt, ...)
 {
 	if (atype != at_logged)
-	{
 		RETURN_META(MRES_IGNORED);
-	}
 
 	/* There are also more messages but we want only logs
 	at_notice,
@@ -1501,8 +1443,7 @@ void C_AlertMessage(ALERT_TYPE atype, const char *szFmt, ...)
 	cell retVal = 0;
 
 	// execute logevents and plugin_log forward
-	if (g_logevents.logEventsExist()
-		|| g_forwards.getFuncsNum(FF_PluginLog))
+	if (g_logevents.logEventsExist() || g_forwards.getFuncsNum(FF_PluginLog))
 	{
 		va_list	logArgPtr;
 		va_start(logArgPtr, szFmt);
@@ -1511,25 +1452,21 @@ void C_AlertMessage(ALERT_TYPE atype, const char *szFmt, ...)
 		g_logevents.parseLogString();
 
 		if (g_logevents.logEventsExist())
-		{
 			g_logevents.executeLogEvents();
-		}
 
 		retVal = executeForwards(FF_PluginLog);
 	}
 
 	if (retVal)
-	{
 		RETURN_META(MRES_SUPERCEDE);
-	}
+
 
 	RETURN_META(MRES_IGNORED);
 }
 
 void C_ChangeLevel(const char *map, const char *what)
 {
-	int ret = executeForwards(FF_ChangeLevel,  map);
-	if (ret)
+	if (executeForwards(FF_ChangeLevel, map))
 		RETURN_META(MRES_SUPERCEDE);
 	RETURN_META(MRES_IGNORED);
 }
@@ -1540,27 +1477,22 @@ void C_CvarValue2(const edict_t *pEdict, int requestId, const char *cvar, const 
 	if (pPlayer->queries.empty())
 		RETURN_META(MRES_IGNORED);
 
-	List<ClientCvarQuery_Info *>::iterator iter, end=pPlayer->queries.end();
-	ClientCvarQuery_Info *info;
-	for (iter=pPlayer->queries.begin(); iter!=end; iter++)
+	List<ClientCvarQuery_Info*>::iterator iter, end = pPlayer->queries.end();
+	ClientCvarQuery_Info* info;
+
+	for (iter = pPlayer->queries.begin(); iter != end; iter++)
 	{
 		info = (*iter);
-		if ( info->requestId == requestId )
+		if (info->requestId == requestId)
 		{
 			if (info->paramLen)
-			{
-				cell arr = prepareCellArray(info->params, info->paramLen);
-				executeForwards(info->resultFwd, static_cast<cell>(ENTINDEX(pEdict)),
-					cvar, value, arr);
-			} else {
-				executeForwards(info->resultFwd, static_cast<cell>(ENTINDEX(pEdict)),
-					cvar, value);
-			}
+				executeForwards(info->resultFwd, static_cast<cell>(ENTINDEX(pEdict)), cvar, value, prepareCellArray(info->params, info->paramLen));
+			else
+				executeForwards(info->resultFwd, static_cast<cell>(ENTINDEX(pEdict)), cvar, value);
 			unregisterSPForward(info->resultFwd);
 			pPlayer->queries.erase(iter);
 			delete [] info->params;
 			delete info;
-
 			break;
 		}
 	}
@@ -1568,39 +1500,42 @@ void C_CvarValue2(const edict_t *pEdict, int requestId, const char *cvar, const 
 	RETURN_META(MRES_HANDLED);
 }
 
-C_DLLEXPORT	int	Meta_Query(const char	*ifvers, plugin_info_t **pPlugInfo,	mutil_funcs_t *pMetaUtilFuncs)
+C_DLLEXPORT	int	Meta_Query(const char *ifvers, plugin_info_t **pPlugInfo, mutil_funcs_t *pMetaUtilFuncs)
 {
 	gpMetaUtilFuncs = pMetaUtilFuncs;
 	*pPlugInfo = &Plugin_info;
-
 	int	mmajor = 0, mminor = 0,	pmajor = 0, pminor = 0;
 
 	sscanf(ifvers, "%d:%d",	&mmajor, &mminor);
 	sscanf(Plugin_info.ifvers, "%d:%d",	&pmajor, &pminor);
 
-	if (strcmp(ifvers, Plugin_info.ifvers))
+	if (cstrcmp(ifvers, Plugin_info.ifvers))
 	{
 		LOG_MESSAGE(PLID, "warning: ifvers mismatch (pl \"%s\") (mm \"%s\")", Plugin_info.ifvers, ifvers);
 		if (pmajor > mmajor)
 		{
 			LOG_ERROR(PLID, "metamod version is too old for this plugin; update metamod");
-			return (FALSE);
-		} else if (pmajor < mmajor) {
+			return FALSE;
+		}
+		else if (pmajor < mmajor)
+		{
 			LOG_ERROR(PLID, "metamod version is incompatible with this plugin; please find a newer version of this plugin");
-			return (FALSE);
-		} else if (pmajor == mmajor) {
+			return FALSE;
+		}
+		else if (pmajor == mmajor)
+		{
 			if (pminor > mminor)
 			{
 				LOG_ERROR(PLID, "metamod version is incompatible with this plugin; please find a newer version of this plugin");
 				return FALSE;
-			} else if (pminor < mminor) {
-				LOG_MESSAGE(PLID, "warning: there may be a newer version of metamod available");
 			}
+			else if (pminor < mminor)
+				LOG_MESSAGE(PLID, "warning: there may be a newer version of metamod available");
 		}
 	}
 
 	// :NOTE: Don't call modules query here (g_FakeMeta.Meta_Query), because we don't know modules yet. Do it in Meta_Attach
-	return (TRUE);
+	return TRUE;
 }
 
 static META_FUNCTIONS gMetaFunctionTable;
@@ -1621,7 +1556,7 @@ C_DLLEXPORT	int	Meta_Attach(PLUG_LOADTIME now, META_FUNCTIONS *pFunctionTable, m
 	gMetaFunctionTable.pfnGetNewDLLFunctions = GetNewDLLFunctions;
 #endif
 
-	memcpy(pFunctionTable, &gMetaFunctionTable, sizeof(META_FUNCTIONS));
+	cmemcpy(pFunctionTable, &gMetaFunctionTable, sizeof(META_FUNCTIONS));
 	gpGamedllFuncs=pGamedllFuncs;
 
 	Module_CacheFunctions();
@@ -1647,16 +1582,18 @@ C_DLLEXPORT	int	Meta_Attach(PLUG_LOADTIME now, META_FUNCTIONS *pFunctionTable, m
 	int i = 0;
 
 	while (gameDir[i])
-		if (gameDir[i++] ==	'/')
+	{
+		if (gameDir[i++] == '/')
 			a = &gameDir[i];
+	}
 
 	g_mod_name = a;
 
 	g_coloredmenus = ColoredMenus(g_mod_name.chars()); // whether or not to use colored menus
 
 	// ###### Print short GPL
-	print_srvconsole("\n   AMX Mod X version %s Copyright (c) 2004-2015 AMX Mod X Development Team \n"
-					 "   AMX Mod X comes with ABSOLUTELY NO WARRANTY; for details type `amxx gpl'.\n", AMXX_VERSION);
+	print_srvconsole("\n   AMX Mod XU version %s Copyright (c) 2004-2024 AMX Mod X Development Team \n"
+					 "   AMX Mod XU comes with ABSOLUTELY NO WARRANTY; for details type `amxx gpl'.\n", AMXX_VERSION);
 	print_srvconsole("   This is free software and you are welcome to redistribute it under \n"
 					 "   certain conditions; type 'amxx gpl' for details.\n  \n");
 
@@ -1667,12 +1604,12 @@ C_DLLEXPORT	int	Meta_Attach(PLUG_LOADTIME now, META_FUNCTIONS *pFunctionTable, m
 	if (amx_config.loadVault())
 	{
 		Vault::iterator	a =	amx_config.begin();
-
 		while (a != amx_config.end())
 		{
 			SET_LOCALINFO((char*)a.key().chars(), (char*)a.value().chars());
 			++a;
 		}
+
 		amx_config.clear();
 	}
 
@@ -1684,7 +1621,7 @@ C_DLLEXPORT	int	Meta_Attach(PLUG_LOADTIME now, META_FUNCTIONS *pFunctionTable, m
 	// This will also call modules Meta_Query and Meta_Attach functions
 	loadModules(get_localinfo("amxx_modules", "addons/amxmodx/configs/modules.ini"), now);
 
-	GET_HOOK_TABLES(PLID, &g_pEngTable, NULL, NULL);
+	GET_HOOK_TABLES(PLID, &g_pEngTable, nullptr, nullptr);
 
 	FlagMan.SetFile("cmdaccess.ini");
 
@@ -1714,10 +1651,8 @@ C_DLLEXPORT	int	Meta_Attach(PLUG_LOADTIME now, META_FUNCTIONS *pFunctionTable, m
 	}
 
 	g_CvarManager.CreateCvarHook();
-
 	GET_IFACE<IFileSystem>("filesystem_stdio", g_FileSystem, FILESYSTEM_INTERFACE_VERSION);
-
-	return (TRUE);
+	return TRUE;
 }
 
 C_DLLEXPORT	int	Meta_Detach(PLUG_LOADTIME now, PL_UNLOAD_REASON	reason)
@@ -1725,7 +1660,7 @@ C_DLLEXPORT	int	Meta_Detach(PLUG_LOADTIME now, PL_UNLOAD_REASON	reason)
 	if (now > Plugin_info.unloadable && reason != PNL_CMD_FORCED)
 	{
 		LOG_ERROR(PLID,	"Can't unload plugin right now");
-		return (FALSE);
+		return FALSE;
 	}
 
 	modules_callPluginsUnloading();
@@ -1773,32 +1708,28 @@ C_DLLEXPORT	int	Meta_Detach(PLUG_LOADTIME now, PL_UNLOAD_REASON	reason)
 		if (RehldsApi)
 		{
 			if (g_isDropClientHookEnabled)
-			{
 				RehldsHookchains->SV_DropClient()->unregisterHook(SV_DropClient_RH);
-			}
 		}
 		else
-		{
 			DropClientDetour->Destroy();
-		}
+
 		g_isDropClientHookAvailable = false;
 		g_isDropClientHookEnabled = false;
 	}
 
-	return (TRUE);
+	return TRUE;
 }
 
 C_DLLEXPORT void WINAPI GiveFnptrsToDll(enginefuncs_t* pengfuncsFromEngine, globalvars_t *pGlobals)
 {
-	memcpy(&g_engfuncs, pengfuncsFromEngine, sizeof(enginefuncs_t));
+	cmemcpy(&g_engfuncs, pengfuncsFromEngine, sizeof(enginefuncs_t));
 	gpGlobals = pGlobals;
 }
 
 DLL_FUNCTIONS gFunctionTable;
 C_DLLEXPORT	int	GetEntityAPI2(DLL_FUNCTIONS *pFunctionTable, int *interfaceVersion)
 {
-	memset(&gFunctionTable, 0, sizeof(DLL_FUNCTIONS));
-
+	cmemset(&gFunctionTable, 0, sizeof(DLL_FUNCTIONS));
 	gFunctionTable.pfnSpawn = C_Spawn;
 	gFunctionTable.pfnClientCommand = C_ClientCommand;
 	gFunctionTable.pfnServerDeactivate = C_ServerDeactivate;
@@ -1806,26 +1737,21 @@ C_DLLEXPORT	int	GetEntityAPI2(DLL_FUNCTIONS *pFunctionTable, int *interfaceVersi
 	gFunctionTable.pfnInconsistentFile = C_InconsistentFile;
 	gFunctionTable.pfnServerActivate = C_ServerActivate;
 	gFunctionTable.pfnClientConnect = C_ClientConnect;
-
-	memcpy(pFunctionTable, &gFunctionTable, sizeof(DLL_FUNCTIONS));
-
+	cmemcpy(pFunctionTable, &gFunctionTable, sizeof(DLL_FUNCTIONS));
 	return 1;
 }
 
 DLL_FUNCTIONS gFunctionTable_Post;
 C_DLLEXPORT	int	GetEntityAPI2_Post(DLL_FUNCTIONS *pFunctionTable, int *interfaceVersion)
 {
-	memset(&gFunctionTable_Post, 0, sizeof(DLL_FUNCTIONS));
-
+	cmemset(&gFunctionTable_Post, 0, sizeof(DLL_FUNCTIONS));
 	gFunctionTable_Post.pfnClientPutInServer = C_ClientPutInServer_Post;
 	gFunctionTable_Post.pfnClientUserInfoChanged = C_ClientUserInfoChanged_Post;
 	gFunctionTable_Post.pfnServerActivate = C_ServerActivate_Post;
 	gFunctionTable_Post.pfnClientConnect = C_ClientConnect_Post;
 	gFunctionTable_Post.pfnStartFrame = C_StartFrame_Post;
 	gFunctionTable_Post.pfnServerDeactivate = C_ServerDeactivate_Post;
-
-	memcpy(pFunctionTable, &gFunctionTable_Post, sizeof(DLL_FUNCTIONS));
-
+	cmemcpy(pFunctionTable, &gFunctionTable_Post, sizeof(DLL_FUNCTIONS));
 	return 1;
 }
 
@@ -1833,20 +1759,22 @@ enginefuncs_t meta_engfuncs;
 
 C_DLLEXPORT	int	GetEngineFunctions(enginefuncs_t *pengfuncsFromEngine, int *interfaceVersion)
 {
-	memset(&meta_engfuncs, 0, sizeof(enginefuncs_t));
+	cmemset(&meta_engfuncs, 0, sizeof(enginefuncs_t));
 
-	if (stricmp(g_mod_name.chars(), "cstrike") == 0 || stricmp(g_mod_name.chars(), "czero") == 0)
+	if (cstricmp(g_mod_name.chars(), "cstrike") == 0 || cstricmp(g_mod_name.chars(), "czero") == 0)
 	{
 		meta_engfuncs.pfnSetModel =	C_SetModel;
 		g_bmod_cstrike = true;
-	} else {
+	}
+	else
+	{
 		g_bmod_cstrike  = false;
-		g_bmod_dod      = !stricmp(g_mod_name.chars(), "dod");
-		g_bmod_dmc      = !stricmp(g_mod_name.chars(), "dmc");
-		g_bmod_tfc      = !stricmp(g_mod_name.chars(), "tfc");
-		g_bmod_ricochet = !stricmp(g_mod_name.chars(), "ricochet");
-		g_bmod_valve    = !stricmp(g_mod_name.chars(), "valve");
-		g_bmod_gearbox  = !stricmp(g_mod_name.chars(), "gearbox");
+		g_bmod_dod      = !cstricmp(g_mod_name.chars(), "dod");
+		g_bmod_dmc      = !cstricmp(g_mod_name.chars(), "dmc");
+		g_bmod_tfc      = !cstricmp(g_mod_name.chars(), "tfc");
+		g_bmod_ricochet = !cstricmp(g_mod_name.chars(), "ricochet");
+		g_bmod_valve    = !cstricmp(g_mod_name.chars(), "valve");
+		g_bmod_gearbox  = !cstricmp(g_mod_name.chars(), "gearbox");
 	}
 
 	g_official_mod = g_bmod_cstrike || g_bmod_dod || g_bmod_dmc || g_bmod_ricochet || g_bmod_tfc || g_bmod_valve || g_bmod_gearbox;
@@ -1871,17 +1799,14 @@ C_DLLEXPORT	int	GetEngineFunctions(enginefuncs_t *pengfuncsFromEngine, int *inte
 	meta_engfuncs.pfnWriteString = C_WriteString;
 
 	meta_engfuncs.pfnAlertMessage = C_AlertMessage;
-
-	memcpy(pengfuncsFromEngine, &meta_engfuncs, sizeof(enginefuncs_t));
-
+	cmemcpy(pengfuncsFromEngine, &meta_engfuncs, sizeof(enginefuncs_t));
 	return 1;
 }
 
 enginefuncs_t meta_engfuncs_post;
 C_DLLEXPORT	int	GetEngineFunctions_Post(enginefuncs_t *pengfuncsFromEngine,	int	*interfaceVersion)
 {
-	memset(&meta_engfuncs_post, 0, sizeof(enginefuncs_t));
-
+	cmemset(&meta_engfuncs_post, 0, sizeof(enginefuncs_t));
 	meta_engfuncs_post.pfnTraceLine = C_TraceLine_Post;
 	meta_engfuncs_post.pfnMessageBegin = C_MessageBegin_Post;
 	meta_engfuncs_post.pfnMessageEnd = C_MessageEnd_Post;
@@ -1894,9 +1819,7 @@ C_DLLEXPORT	int	GetEngineFunctions_Post(enginefuncs_t *pengfuncsFromEngine,	int	
 	meta_engfuncs_post.pfnWriteString = C_WriteString_Post;
 	meta_engfuncs_post.pfnWriteEntity = C_WriteEntity_Post;
 	meta_engfuncs_post.pfnRegUserMsg = C_RegUserMsg_Post;
-
-	memcpy(pengfuncsFromEngine, &meta_engfuncs_post, sizeof(enginefuncs_t));
-
+	cmemcpy(pengfuncsFromEngine, &meta_engfuncs_post, sizeof(enginefuncs_t));
 	return 1;
 }
 
@@ -1906,7 +1829,7 @@ C_DLLEXPORT	int	GetEngineFunctions_Post(enginefuncs_t *pengfuncsFromEngine,	int	
 NEW_DLL_FUNCTIONS gNewDLLFunctionTable;
 C_DLLEXPORT int GetNewDLLFunctions(NEW_DLL_FUNCTIONS *pNewFunctionTable, int *interfaceVersion)
 {
-	memset(&gNewDLLFunctionTable, 0, sizeof(NEW_DLL_FUNCTIONS));
+	cmemset(&gNewDLLFunctionTable, 0, sizeof(NEW_DLL_FUNCTIONS));
 
 	// default metamod does not call this if the gamedll doesn't provide it
 	if (g_engfuncs.pfnQueryClientCvarValue2)
@@ -1915,8 +1838,7 @@ C_DLLEXPORT int GetNewDLLFunctions(NEW_DLL_FUNCTIONS *pNewFunctionTable, int *in
 		g_NewDLL_Available = true;
 	}
 
-	memcpy(pNewFunctionTable, &gNewDLLFunctionTable, sizeof(NEW_DLL_FUNCTIONS));
-
+	cmemcpy(pNewFunctionTable, &gNewDLLFunctionTable, sizeof(NEW_DLL_FUNCTIONS));
 	return 1;
 }
 #endif

@@ -9,38 +9,50 @@
 
 #include <string.h>
 #include "nongpl_matches.h"
-
-NONGPL_PLUGIN_T NONGPL_PLUGIN_LIST[] = 
-{
-	{"Live", "CZ Gun Game", "czgungame.amxx"},
-	{"Live", "AMXX Gun Game", "czgungame.amxx"},
-	{NULL, NULL, NULL},
-};
-
-NONGPL_CVAR_T NONGPL_CVAR_LIST[] = 
-{
-	{"gg_mode", 0},
-	{"gg_warmuptimer", 0},
-	{"gg_ff", 0},
-	{"gg_fflevel", 0},
-	{"gg_stats", 0},
-	{"gg_dm", 0},
-	{"gg_turbo", 0},
-	{"amx_ggreset", 1},
-	{"amx_gg", 1},
-	{NULL, 0},
-};
+#include <clib.h>
 
 bool CheckBadConList(const char *cvar, int type)
 {
-	int i = 0;
-	while (NONGPL_CVAR_LIST[i].cvar != NULL)
+	struct NONGPL_PLUGIN_T
 	{
-		if (NONGPL_CVAR_LIST[i].type == type
-			&& strcmp(NONGPL_CVAR_LIST[i].cvar, cvar) == 0)
-		{
+		const char* author;
+		const char* title;
+		const char* filename;
+	};
+
+	struct NONGPL_CVAR_T
+	{
+		const char* cvar;
+		int type;
+	};
+
+	NONGPL_PLUGIN_T NONGPL_PLUGIN_LIST[] =
+	{
+		{"Live", "CZ Gun Game", "czgungame.amxx"},
+		{"Live", "AMXX Gun Game", "czgungame.amxx"},
+		{nullptr, nullptr, nullptr},
+	};
+
+	NONGPL_CVAR_T NONGPL_CVAR_LIST[] =
+	{
+		{"gg_mode", 0},
+		{"gg_warmuptimer", 0},
+		{"gg_ff", 0},
+		{"gg_fflevel", 0},
+		{"gg_stats", 0},
+		{"gg_dm", 0},
+		{"gg_turbo", 0},
+		{"amx_ggreset", 1},
+		{"amx_gg", 1},
+		{nullptr, 0},
+	};
+
+	int i = 0;
+	while (NONGPL_CVAR_LIST[i].cvar)
+	{
+		if (NONGPL_CVAR_LIST[i].type == type && cstrcmp(NONGPL_CVAR_LIST[i].cvar, cvar) == 0)
 			return true;
-		}
+
 		i++;
 	}
 

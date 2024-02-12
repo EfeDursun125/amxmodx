@@ -81,31 +81,38 @@ public:
 	
 	bool Connect(const char* connectname, const char* ipaddress);
 
-	inline bool IsBot()
+	inline bool IsBot(void)
 	{
 		if ((pEdict->v.flags & FL_FAKECLIENT) == FL_FAKECLIENT)
-		{
 			return true;
-		}
 		
 		const char *auth = GETPLAYERAUTHID(pEdict); 	 
-		if (auth && (strcmp(auth, "BOT") == 0)) 	 
-		{
+		if (auth != nullptr && strcmp(auth, "BOT") == 0)
 			return true;
-		}
 		
 		return false;
 	}
 
-	inline bool IsAlive()
+	inline bool IsAlive(void)
 	{
-		return ((pEdict->v.deadflag == DEAD_NO) && (pEdict->v.health > 0));
+		return ((pEdict->v.deadflag == DEAD_NO) && (pEdict->v.health > 0.0f));
 	}
 
-	inline void Authorize() { authorized = true; }
+	inline void Authorize(void) { authorized = true; }
+	inline uint_fast8_t NextHUDChannel(void)
+	{
+		uint_fast8_t ilow = 1;
+		uint_fast8_t i;
+		constexpr uint_fast8_t max = 4;
+		constexpr uint_fast8_t next = 1;
+		for (i = ilow + next; i <= max; i++)
+		{
+			if (channels[i] < channels[ilow])
+				ilow = i;
+		}
 
-	int NextHUDChannel();
-
+		return ilow;
+	}
 };
 
 // *****************************************************

@@ -133,16 +133,16 @@ extern  "C" {
   #define PAWN_CELL_SIZE 32     /* by default, use 32-bit cells */
 #endif
 #if PAWN_CELL_SIZE==16
-  typedef uint16_t  ucell;
-  typedef int16_t   cell;
+  typedef uint16_t ucell;
+  typedef int16_t cell;
 #elif PAWN_CELL_SIZE==32
-  typedef uint32_t  ucell;
-  typedef int32_t   cell;
-#define REAL	float
+  typedef uint_fast32_t ucell;
+  typedef int_fast32_t cell;
+  typedef float REAL;
 #elif PAWN_CELL_SIZE==64
-  typedef uint64_t  ucell;
-  typedef int64_t   cell;
-#define REAL	double
+  typedef uint_fast64_t ucell;
+  typedef int_fast64_t cell;
+  typedef double REAL;
 #else
   #error Unsupported cell size (PAWN_CELL_SIZE)
 #endif
@@ -351,15 +351,8 @@ typedef void (*BROWSEHOOK)(AMX *amx, cell *oplist, cell *cip);
  * two macros are convenient for casting a "cell" into a "float" type _without_
  * changing the bit pattern
  */
-#if PAWN_CELL_SIZE==32
-  #define amx_ftoc(f)   ( * ((cell*)&f) )   /* float to cell */
-  #define amx_ctof(c)   ( * ((float*)&c) )  /* cell to float */
-#elif PAWN_CELL_SIZE==64
-  #define amx_ftoc(f)   ( * ((cell*)&f) )   /* float to cell */
-  #define amx_ctof(c)   ( * ((double*)&c) ) /* cell to float */
-#else
-  #error Unsupported cell size
-#endif
+#define amx_ftoc(f) (*((cell*)&f)) /* float to cell */
+#define amx_ctof(c) (*((REAL*)&c)) /* cell to float */
 
 #define amx_StrParam(amx,param,result)                                      \
     do {                                                                    \
@@ -367,9 +360,9 @@ typedef void (*BROWSEHOOK)(AMX *amx, cell *oplist, cell *cip);
       amx_GetAddr((amx), (param), &amx_cstr_);                              \
       amx_StrLen(amx_cstr_, &amx_length_);                                  \
       if (amx_length_ > 0 &&                                                \
-          ((result) = (void*)alloca((amx_length_ + 1) * sizeof(*(result)))) != NULL) \
+          ((result) = (void*)alloca((amx_length_ + 1) * sizeof(*(result)))) != nullptr) \
         amx_GetString((char*)(result), amx_cstr_, sizeof(*(result))>1, amx_length_); \
-      else (result) = NULL;                                                 \
+      else (result) = nullptr;                                                 \
     } while (0)
 
 uint16_t * AMXAPI amx_Align16(uint16_t *v);

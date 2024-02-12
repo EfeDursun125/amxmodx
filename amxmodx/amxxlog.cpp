@@ -25,7 +25,7 @@
 
 #include <amxmodx_version.h>
 
-CLog::CLog()
+CLog::CLog(void)
 {
 	m_LogType = 0;
 	m_LogFile = nullptr;
@@ -33,18 +33,17 @@ CLog::CLog()
 	m_LoggedErrMap = false;
 }
 
-CLog::~CLog()
+CLog::~CLog(void)
 {
 	CloseFile();
 }
 
-void CLog::CloseFile()
+void CLog::CloseFile(void)
 {
 	// log "log file closed" to old file, if any
 	if (m_LogFile.length())
 	{
 		FILE *fp = fopen(m_LogFile.chars(), "r");
-
 		if (fp)
 		{
 			fclose(fp);
@@ -54,10 +53,8 @@ void CLog::CloseFile()
 			time_t td;
 			time(&td);
 			tm *curTime = localtime(&td);
-
 			char date[32];
 			strftime(date, 31, "%m/%d/%Y - %H:%M:%S", curTime);
-
 			fprintf(fp, "L %s: %s\n", date, "Log file closed.");
 			fclose(fp);
 		}
@@ -66,15 +63,15 @@ void CLog::CloseFile()
 	}
 }
 
-void CLog::CreateNewFile()
+void CLog::CreateNewFile(void)
 {
 	CloseFile();
 
 	// build filename
 	time_t td;
 	time(&td);
+	time(&td);
 	tm *curTime = localtime(&td);
-
 	char file[PLATFORM_MAX_PATH];
 	char name[256];
 	int i = 0;
@@ -83,14 +80,14 @@ void CLog::CreateNewFile()
 	{
 		ke::SafeSprintf(name, sizeof(name), "%s/L%02d%02d%03d.log", g_log_dir.chars(), curTime->tm_mon + 1, curTime->tm_mday, i);
 		build_pathname_r(file, sizeof(file), "%s", name);
-		FILE *pTmpFile = fopen(file, "r");			// open for reading to check whether the file exists
-
+		FILE *pTmpFile = fopen(file, "r"); // open for reading to check whether the file exists
 		if (!pTmpFile)
 			break;
 
 		fclose(pTmpFile);
 		++i;
 	}
+
 	m_LogFile = file;
 
 	// Log logfile start
@@ -100,7 +97,9 @@ void CLog::CreateNewFile()
 	{
 		ALERT(at_logged, "[AMXX] Unexpected fatal logging error. AMXX Logging disabled.\n");
 		SET_LOCALINFO("amxx_logging", "0");
-	} else {
+	}
+	else
+	{
 		fprintf(fp, "AMX Mod X log file started (file \"%s\") (version \"%s\")\n", name, AMXX_VERSION);
 		fclose(fp);
 	}
@@ -108,24 +107,22 @@ void CLog::CreateNewFile()
 
 void CLog::UseFile(const ke::AString &fileName)
 {
-	static char file[PLATFORM_MAX_PATH];
+	char file[PLATFORM_MAX_PATH];
 	m_LogFile = build_pathname_r(file, sizeof(file), "%s/%s", g_log_dir.chars(), fileName.chars());
 }
 
 void CLog::SetLogType(const char* localInfo)
 {
 	m_LogType = atoi(get_localinfo(localInfo, "1"));
-
 	if (m_LogType < 0 || m_LogType > 3)
 	{
 		SET_LOCALINFO(localInfo, "1");
 		m_LogType = 1;
-
 		print_srvconsole("[AMXX] Invalid amxx_logging value; setting back to 1...");
 	}
 }
 
-void CLog::MapChange()
+void CLog::MapChange(void)
 {
 	// create dir if not existing
 	char file[PLATFORM_MAX_PATH];
@@ -136,24 +133,16 @@ void CLog::MapChange()
 #endif
 
 	SetLogType("amxx_logging");
-
 	m_LoggedErrMap = false;
 
 	if (m_LogType == 2)
-	{
-		// create new logfile
 		CreateNewFile();
-	} else if (m_LogType == 1) {
+	else if (m_LogType == 1)
 		Log("-------- Mapchange to %s --------", STRING(gpGlobals->mapname));
-	} else {
-		return;
-	}
 }
 
 void CLog::Log(const char *fmt, ...)
 {
-	static char file[PLATFORM_MAX_PATH];
-
 	if (m_LogType == 1 || m_LogType == 2)
 	{
 		// get time
@@ -165,14 +154,15 @@ void CLog::Log(const char *fmt, ...)
 		strftime(date, 31, "%m/%d/%Y - %H:%M:%S", curTime);
 
 		// msg
-		static char msg[3072];
+		char msg[3072];
 
 		va_list arglst;
 		va_start(arglst, fmt);
-		vsnprintf(msg, 3071, fmt, arglst);
+		vsnprintf(msg, sizeof(msg) - 1, fmt, arglst);
 		va_end(arglst);
 
-		FILE *pF = NULL;
+		char file[PLATFORM_MAX_PATH];
+		FILE *pF = nullptr;
 		if (m_LogType == 2)
 		{
 			pF = fopen(m_LogFile.chars(), "a+");
@@ -180,7 +170,6 @@ void CLog::Log(const char *fmt, ...)
 			{
 				CreateNewFile();
 				pF = fopen(m_LogFile.chars(), "a+");
-
 				if (!pF)
 				{
 					ALERT(at_logged, "[AMXX] Unexpected fatal logging error (couldn't open %s for a+). AMXX Logging disabled for this map.\n", m_LogFile.chars());
@@ -188,7 +177,9 @@ void CLog::Log(const char *fmt, ...)
 					return;
 				}
 			}
-		} else {
+		}
+		else
+		{
 			build_pathname_r(file, sizeof(file), "%s/L%04d%02d%02d.log", g_log_dir.chars(), (curTime->tm_year + 1900), curTime->tm_mon + 1, curTime->tm_mday);
 			pF = fopen(file, "a+");
 		}
@@ -197,7 +188,9 @@ void CLog::Log(const char *fmt, ...)
 		{
 			fprintf(pF, "L %s: %s\n", date, msg);
 			fclose(pF);
-		} else {
+		}
+		else
+		{
 			ALERT(at_logged, "[AMXX] Unexpected fatal logging error (couldn't open %s for a+). AMXX Logging disabled for this map.\n", file);
 			m_LogType = 0;
 			return;
@@ -205,12 +198,14 @@ void CLog::Log(const char *fmt, ...)
 
 		// print on server console
 		print_srvconsole("L %s: %s\n", date, msg);
-	} else if (m_LogType == 3) {
+	}
+	else if (m_LogType == 3)
+	{
 		// build message
-		static char msg_[3072];
+		char msg_[3072];
 		va_list arglst;
 		va_start(arglst, fmt);
-		vsnprintf(msg_, 3071, fmt, arglst);
+		vsnprintf(msg_, sizeof(msg_) - 1, fmt, arglst);
 		va_end(arglst);
 		ALERT(at_logged, "%s\n", msg_);
 	}
@@ -218,13 +213,11 @@ void CLog::Log(const char *fmt, ...)
 
 void CLog::LogError(const char *fmt, ...)
 {
-	static char file[PLATFORM_MAX_PATH];
-	static char name[256];
-
 	if (m_FoundError)
-	{
 		return;
-	}
+
+	char file[PLATFORM_MAX_PATH];
+	char name[256];
 
 	// get time
 	time_t td;
@@ -235,18 +228,17 @@ void CLog::LogError(const char *fmt, ...)
 	strftime(date, 31, "%m/%d/%Y - %H:%M:%S", curTime);
 
 	// msg
-	static char msg[3072];
+	char msg[3072];
 
 	va_list arglst;
 	va_start(arglst, fmt);
-	vsnprintf(msg, sizeof(msg)-1, fmt, arglst);
+	vsnprintf(msg, sizeof(msg) - 1, fmt, arglst);
 	va_end(arglst);
 
-	FILE *pF = NULL;
+	FILE *pF = nullptr;
 	ke::SafeSprintf(name, sizeof(name), "%s/error_%04d%02d%02d.log", g_log_dir.chars(), curTime->tm_year + 1900, curTime->tm_mon + 1, curTime->tm_mday);
 	build_pathname_r(file, sizeof(file), "%s", name);
 	pF = fopen(file, "a+");
-
 	if (pF)
 	{
 		if (!m_LoggedErrMap)
@@ -255,9 +247,12 @@ void CLog::LogError(const char *fmt, ...)
 			fprintf(pF, "L %s: Info (map \"%s\") (file \"%s\")\n", date, STRING(gpGlobals->mapname), name);
 			m_LoggedErrMap = true;
 		}
+
 		fprintf(pF, "L %s: %s\n", date, msg);
 		fclose(pF);
-	} else {
+	}
+	else
+	{
 		ALERT(at_logged, "[AMXX] Unexpected fatal logging error (couldn't open %s for a+). AMXX Error Logging disabled for this map.\n", file);
 		m_FoundError = true;
 		return;

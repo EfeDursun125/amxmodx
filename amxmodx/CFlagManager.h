@@ -13,7 +13,6 @@
 #include <time.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-
 #include "sh_list.h"
 #include "amxmodx.h"
 #include "CLibrarySys.h"
@@ -21,106 +20,64 @@
 class CFlagEntry
 {
 private:
-	ke::AString		m_strName;			// command name ("amx_slap")
-	ke::AString		m_strFlags;			// string flags ("a","b")
-	ke::AString		m_strComment;		// comment to write ("; admincmd.amxx")
-	int				m_iFlags;			// bitmask flags
-	int				m_iNeedWritten;		// write this command on map change?
-	int				m_iHidden;			// set to 1 when the command is set to "!" access in
-										// the .ini file: this means do not process this command
-
+	ke::AString	m_strName;			// command name ("amx_slap")
+	ke::AString	m_strFlags;			// string flags ("a","b")
+	ke::AString	m_strComment;		// comment to write ("; admincmd.amxx")
+	int	m_iFlags;			// bitmask flags
+	bool m_bNeedWritten;	// write this command on map change?
+	bool m_bHidden;			// set to 1 when the command is set to "!" access in
+							// the .ini file: this means do not process this command
 public:
-
-	CFlagEntry()
+	CFlagEntry(void)
 	{
-		m_iNeedWritten=0;
-		m_iFlags=0;
-		m_iHidden=0;
-	};
-	const int NeedWritten(void) const
-	{
-		return m_iNeedWritten;
+		m_bNeedWritten = false;
+		m_iFlags = 0;
+		m_bHidden = false;
 	};
 
-	void SetNeedWritten(const int i=1)
-	{
-		m_iNeedWritten=i;
-	};
-
-	const ke::AString *GetName(void) const
-	{
-		return &m_strName;
-	};
-
-	const ke::AString *GetFlags(void) const
-	{
-		return &m_strFlags;
-	};
-
-	const ke::AString *GetComment(void) const
-	{
-		return &m_strComment;
-	};
-
-	const int Flags(void) const
-	{
-		return m_iFlags;
-	};
-
-	void SetName(const char *data)
-	{
-		m_strName = data;
-	};
-	void SetFlags(const char *flags)
+	inline const bool NeedWritten(void) const { return m_bNeedWritten; };
+	inline void SetNeedWritten(const bool i = true) { m_bNeedWritten = i; };
+	inline const ke::AString *GetName(void) const { return &m_strName; };
+	inline const ke::AString *GetFlags(void) const { return &m_strFlags; };
+	inline const ke::AString *GetComment(void) const { return &m_strComment; };
+	inline const int Flags(void) const { return m_iFlags; };
+	inline void SetName(const char *data) { m_strName = data; };
+	inline void SetFlags(const char *flags)
 	{
 		// If this is a "!" entry then stop
-		if (flags && flags[0]=='!')
+		if (flags && flags[0] == '!')
 		{
-			SetHidden(1);
+			SetHidden(true);
 			return;
 		}
 
 		m_strFlags = flags;
-		m_iFlags=UTIL_ReadFlags(flags);
+		m_iFlags = UTIL_ReadFlags(flags);
 	};
-	void SetFlags(const int flags)
+	inline void SetFlags(const int flags)
 	{
-		m_iFlags=flags;
-
+		m_iFlags = flags;
 		char FlagsString[32];
 		UTIL_GetFlags(FlagsString, flags);
-
 		m_strFlags = FlagsString;
 	};
-	void SetComment(const char *comment)
-	{
-		m_strComment = comment;
-	};
-	void SetHidden(int i=1)
-	{
-		m_iHidden=i;
-	};
-	int IsHidden(void) const
-	{
-		return m_iHidden;
-	};
+	inline void SetComment(const char *comment){ m_strComment = comment; };
+	inline void SetHidden(const bool i = true) { m_bHidden = i; };
+	inline bool IsHidden(void) const { return m_bHidden; };
 };
 class CFlagManager
 {
 private:
-	List<CFlagEntry *>		 m_FlagList;
-	ke::AString				 m_strConfigFile;
-	struct stat				 m_Stat;
-	int						 m_iForceRead;
-	int						 m_iDisabled;
-	
+	List<CFlagEntry*> m_FlagList;
+	ke::AString m_strConfigFile;
+	struct stat m_Stat;
+	bool m_bForceRead;
+	bool m_bDisabled;
 
 	void CreateIfNotExist(void) const
 	{
 		FILE *fp;
-		
 		fp = fopen(GetFile(), "r");
-
 		if (!fp)
 		{
 			// File does not exist, create the header
@@ -144,27 +101,25 @@ private:
 			};
 		}
 		else
-		{
 			fclose(fp);
-		}
 	};
+
 	/**
-	 * Returns 1 if the timestamp for the file is different than the one we have loaded
+	 * returns 1 if the timestamp for the file is different than the one we have loaded
 	 * 0 otherwise
 	 */
 	inline int NeedToLoad(void)
 	{
 		struct stat TempStat;
-
 		stat(GetFile(), &TempStat);
 
-		// If the modified timestamp does not match the stored
+		// if the modified timestamp does not match the stored
 		// timestamp than we need to re-read this file.
-		// Otherwise, ignore the file.
+		// otherwise, ignore the file.
 		if (TempStat.st_mtime != m_Stat.st_mtime)
 		{
-			// Save down the modified timestamp
-			m_Stat.st_mtime=TempStat.st_mtime;
+			// save down the modified timestamp
+			m_Stat.st_mtime = TempStat.st_mtime;
 			return 1;
 		};
 
@@ -173,28 +128,26 @@ private:
 	};
 public:
 
-	CFlagManager()
+	CFlagManager(void)
 	{
-		memset(&m_Stat,0x0,sizeof(struct stat));
-		m_iDisabled=0;
-		m_iForceRead=0;
+		memset(&m_Stat, 0x0, sizeof(struct stat));
+		m_bDisabled = false;
+		m_bForceRead = false;
 	};
-	~CFlagManager()
-	{
-	};
+
+	~CFlagManager(void) {};
 
 	/**
 	 * Sets the filename in relation to amxmodx/configs
 	 */
-	void SetFile(const char *Filename="cmdaccess.ini");
-
-	const char *GetFile(void) const	{ return m_strConfigFile.chars(); };
+	void SetFile(const char *Filename = "cmdaccess.ini");
+	inline const char *GetFile(void) const { return m_strConfigFile.chars(); };
 	
 	/**
 	 * Parse the file, and load all entries
 	 * Returns 1 on success, 0 on refusal (no need to), and -1 on error
 	 */
-	const int LoadFile(const int force=0);
+	const int LoadFile(const int force = 0);
 
 	/**
 	 * Checks if the command exists in the list
@@ -222,9 +175,7 @@ public:
 	 *   regardless of whatever this function would say should be done with it
 	 */
 	int ShouldIAddThisCommand(const AMX *amx, const cell *params, const char *cmdname) const;
-
 	void Clear(void);
-
 	void CheckIfDisabled(void);
 };
 

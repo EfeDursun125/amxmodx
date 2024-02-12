@@ -1,4 +1,4 @@
-/*  Pawn debugger interface
+﻿/*  Pawn debugger interface
  *
  *  Support functions for debugger applications
  *
@@ -67,21 +67,29 @@ void memread(void *dest, char **src, size_t size)
 	*src += size;
 }
 
-const char *ClipFileName(const char *inp)
+const char* ClipFileName(const char* inp)
 {
-	char buffer[256];
-	const size_t len = strlen(inp);
-	const char *ptr = inp;
+    const size_t len = strlen(inp);
+    const char* ptr = inp;
+    char* buffer = static_cast<char*>(malloc(len + 1));
+    if (buffer == nullptr)
+        return nullptr;
 
     size_t i;
-	for (i = 0; i < len; i++)
-	{
-		if ((inp[i] == '\\' || inp[i] == '/') && (i != len-1))
-			ptr = inp + i + 1;
-	}
+    for (i = 0; i < len; i++)
+    {
+        if ((inp[i] == '\\' || inp[i] == '/') && (i != len - 1))
+            ptr = inp + i + 1;
+    }
 
-	strcpy(buffer, ptr);
-	return buffer;
+    if (*ptr == '\0')
+    {
+        free(buffer);
+        return nullptr;
+    }
+
+    strcpy(buffer, ptr);
+    return buffer;
 }
 
 //Note - I changed this function to read from memory instead.
@@ -165,7 +173,14 @@ int AMXAPI dbg_LoadInfo(AMX_DBG *amxdbg, void *dbg_addr)
   //debug("Files: %d\n", amxdbg->hdr->files);
   for (index=0;index<amxdbg->hdr->files; index++)
   {
-	  strcpy((char *)amxdbg->filetbl[index]->name, ClipFileName(amxdbg->filetbl[index]->name));
+      const char* name = ClipFileName(amxdbg->filetbl[index]->name);
+      if (name == nullptr)
+      {
+          dbg_FreeInfo(amxdbg);
+          return AMX_ERR_MEMORY;
+      }
+
+	  strcpy((char *)amxdbg->filetbl[index]->name, name);
 	  //debug(" [%d] %s\n", index, amxdbg->filetbl[index]->name);
   }
 

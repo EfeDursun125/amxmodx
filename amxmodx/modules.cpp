@@ -163,6 +163,9 @@ int load_amxscript_internal(AMX *amx, void **program, const char *filename, char
 			case CAmxxReader::Err_OldFile:
 				ke::SafeStrcpy(error, maxLength, "Plugin uses deprecated format. Update compiler");
 				return (amx->error = AMX_ERR_FORMAT);
+			case CAmxxReader::Err_Memory:
+				ke::SafeStrcpy(error, maxLength, "Not enough memory...");
+				return (amx->error = AMX_ERR_MEMORY);
 			default:
 				ke::SafeStrcpy(error, maxLength, "Unknown error");
 				return (amx->error = AMX_ERR_NOTFOUND);

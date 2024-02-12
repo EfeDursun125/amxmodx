@@ -33,14 +33,14 @@ struct regnative
 };
 
 extern "C" void amxx_DynaInit(void *ptr);
-extern "C" void amxx_DynaMake(char *buffer, int id);
+extern "C" void amxx_DynaMake(char *buffer, const int id);
 extern "C" int amxx_DynaFunc(AMX *amx, cell *params);
-extern "C" int amxx_DynaCodesize();
+extern "C" int amxx_DynaCodesize(void);
 
-AMX_NATIVE_INFO *BuildNativeTable();
-void ClearPluginLibraries();
+AMX_NATIVE_INFO *BuildNativeTable(void);
+void ClearPluginLibraries(void);
 
-//I couldn't resist :)
+// I couldn't resist :)
 extern AMX_NATIVE_INFO g_NativeNatives[];
 
 #endif //_INCLUDE_NATIVES_H

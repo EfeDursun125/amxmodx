@@ -11,6 +11,6 @@
 #define __FAKEMETA_H__
 
 int UnloadMetamodPlugin(void *handle);
-int LoadMetamodPlugin(const char *path, void **handle, PLUG_LOADTIME now);
+int LoadMetamodPlugin(const char *path, void **handle, const PLUG_LOADTIME now);
 
 #endif // #ifndef __FAKEMETA_H__

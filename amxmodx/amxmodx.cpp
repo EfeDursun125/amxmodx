@@ -19,6 +19,7 @@
 #include "CFlagManager.h"
 #include "nongpl_matches.h"
 #include "format.h"
+#include <clib.h>
 
 extern CFlagManager FlagMan;
 ke::Vector<CAdminData*> DynamicAdmins;
@@ -37,21 +38,19 @@ const char *g_sInaccessibleXVars[] =
 
 static cell AMX_NATIVE_CALL get_xvar_id(AMX *amx, cell *params)
 {
-	int len;
-	char* sName = get_amxstring(amx, params[1], 0, len);
-	cell ptr;
-
-	for (auto name : g_sInaccessibleXVars)
+	char* sName = get_amxstring_nolen(amx, params[1], 0);
+	for (auto& name : g_sInaccessibleXVars)
 	{
-		if (!strcmp(sName, name))
+		if (!cstrcmp(sName, name))
 			return -1;
 	}
 
+	cell ptr;
 	CPluginMngr::iterator a = g_plugins.begin();
 	CPluginMngr::iterator b = g_plugins.end();
 	for (; a != b; ++a)
 	{
-		if ((*a).isValid() && amx_FindPubVar((*a).getAMX(), sName, &ptr) == AMX_ERR_NONE)
+		if (a && (*a).isValid() && amx_FindPubVar((*a).getAMX(), sName, &ptr) == AMX_ERR_NONE)
 			return g_xvars.put((*a).getAMX(), get_amxaddr((*a).getAMX(), ptr));
 	}
 
@@ -70,6 +69,7 @@ static cell AMX_NATIVE_CALL set_xvar_num(AMX *amx, cell *params)
 		LogError(amx, AMX_ERR_NATIVE, "Invalid xvar id");
 		return 0;
 	}
+
 	return 1;
 }
 
@@ -80,19 +80,19 @@ static cell AMX_NATIVE_CALL xvar_exists(AMX *amx, cell *params)
 
 static cell AMX_NATIVE_CALL emit_sound(AMX *amx, cell *params) /* 7 param */
 {
-	int len;
-	char* szSample = get_amxstring(amx, params[3], 0, len);
-	const float vol = amx_ctof(params[4]);
-	const float att = amx_ctof(params[5]);
-	const int channel = params[2];
-	const int pitch = params[7];
-	const int flags = params[6];
-
 	if (params[1] == 0)
 	{
-		int i;
+		char* szSample = get_amxstring_nolen(amx, params[3], 0);
+		const float vol = amx_ctof(params[4]);
+		const float att = amx_ctof(params[5]);
+		const int channel = params[2];
+		const int pitch = params[7];
+		const int flags = params[6];
+
+		int8_t i;
+		const int8_t max = static_cast<int8_t>(gpGlobals->maxClients);
 		CPlayer* pPlayer;
-		for (i = 1; i <= gpGlobals->maxClients ; ++i)
+		for (i = 1; i <= max; ++i)
 		{
 			pPlayer = GET_PLAYER_POINTER_I(i);
 			if (pPlayer->ingame)
@@ -103,7 +103,12 @@ static cell AMX_NATIVE_CALL emit_sound(AMX *amx, cell *params) /* 7 param */
 	{
 		edict_t* pEdict = TypeConversion.id_to_edict(params[1]);
 		if (!FNullEnt(pEdict))
-			EMIT_SOUND_DYN2(pEdict, channel, szSample, vol, att, flags, pitch);
+		{
+			char* szSample = get_amxstring_nolen(amx, params[3], 0);
+			const float vol = amx_ctof(params[4]);
+			const float att = amx_ctof(params[5]);
+			EMIT_SOUND_DYN2(pEdict, params[2], szSample, vol, att, params[6], params[7]);
+		}
 	}
 
 	return 1;
@@ -125,15 +130,15 @@ static cell AMX_NATIVE_CALL server_print(AMX *amx, cell *params) /* 1 param */
 
 static cell AMX_NATIVE_CALL engclient_print(AMX *amx, cell *params) /* 3 param */
 {
-	int len = 0;
-	char *msg;
-	const PRINT_TYPE type = static_cast<PRINT_TYPE>(params[2]);
-
-	if (params[1] == 0)
+	if (!params[1])
 	{
-		int i;
+		const PRINT_TYPE type = static_cast<PRINT_TYPE>(params[2]);
+		int_fast8_t i;
+		const int_fast8_t max = static_cast<int_fast8_t>(gpGlobals->maxClients);
 		CPlayer* pPlayer;
-		for (i = 1; i <= gpGlobals->maxClients; ++i)
+		char* msg;
+		int len = 0;
+		for (i = 1; i <= max; ++i)
 		{
 			pPlayer = GET_PLAYER_POINTER_I(i);
 			if ((type == print_console  && pPlayer->initialized) || pPlayer->ingame)
@@ -145,44 +150,49 @@ static cell AMX_NATIVE_CALL engclient_print(AMX *amx, cell *params) /* 3 param *
 				CLIENT_PRINT(pPlayer->pEdict, type, msg);
 			}
 		}
+
+		return len;
 	}
 	else
 	{
-		const int index = params[1];
-		if (index < 1 || index > gpGlobals->maxClients)
+		if (params[1] < 1 || params[1] > gpGlobals->maxClients)
 		{
-			LogError(amx, AMX_ERR_NATIVE, "Invalid player id %d", index);
+			LogError(amx, AMX_ERR_NATIVE, "Invalid player id %d", params[1]);
 			return 0;
 		}
 
-		CPlayer* pPlayer = GET_PLAYER_POINTER_I(index);
+		int len = 0;
+		const PRINT_TYPE type = static_cast<PRINT_TYPE>(params[2]);
+		CPlayer* pPlayer = GET_PLAYER_POINTER_I(params[1]);
 		if ((type == print_console  && pPlayer->initialized) || pPlayer->ingame)
 		{
-			g_langMngr.SetDefLang(index);
-			msg = format_amxstring(amx, params, 3, len);
+			g_langMngr.SetDefLang(params[1]);
+			
+			char* msg = format_amxstring(amx, params, 3, len);
 			msg[len++] = '\n';
 			msg[len] = 0;
 			CLIENT_PRINT(pPlayer->pEdict, type, msg);
 		}
+
+		return len;
 	}
 
-	return len;
+	return 0;
 }
 
 static cell AMX_NATIVE_CALL console_cmd(AMX *amx, cell *params) /* 2 param */
 {
-	int index = params[1];
-	g_langMngr.SetDefLang(index);
+	g_langMngr.SetDefLang(params[1]);
 	int len;
 	char* cmd = format_amxstring(amx, params, 2, len);
 	cmd[len++] = '\n';
 	cmd[len] = 0;
 
-	if (index < 1 || index > gpGlobals->maxClients)
+	if (params[1] < 1 || params[1] > gpGlobals->maxClients)
 		SERVER_COMMAND(cmd);
 	else
 	{
-		CPlayer* pPlayer = GET_PLAYER_POINTER_I(index);
+		CPlayer* pPlayer = GET_PLAYER_POINTER_I(params[1]);
 		if (!pPlayer->IsBot() && pPlayer->initialized)
 			CLIENT_COMMAND(pPlayer->pEdict, "%s", cmd);
 	}
@@ -194,17 +204,16 @@ static cell AMX_NATIVE_CALL console_cmd(AMX *amx, cell *params) /* 2 param */
 // The client console is limited to 127 bytes, including the newline.
 static cell AMX_NATIVE_CALL console_print(AMX *amx, cell *params) /* 2 param */
 {
-	const int index = params[1];
-	if (index < 1 || index > gpGlobals->maxClients)
+	if (params[1] < 1 || params[1] > gpGlobals->maxClients)
 		g_langMngr.SetDefLang(LANG_SERVER);
 	else
-		g_langMngr.SetDefLang(index);
+		g_langMngr.SetDefLang(params[1]);
 
-	int len;
-	char* message = format_amxstring(amx, params, 2, len);
-
-	if (index < 1 || index > gpGlobals->maxClients)	// Server console
+	if (params[1] < 1 || params[1] > gpGlobals->maxClients)	// Server console
 	{
+		int len;
+		char* message = format_amxstring(amx, params, 2, len);
+
 		if (len > 254) // Server console truncates after byte 255. (254 + \n = 255)
 		{
 			len = 254;
@@ -215,12 +224,16 @@ static cell AMX_NATIVE_CALL console_print(AMX *amx, cell *params) /* 2 param */
 		message[len++] = '\n';
 		message[len] = 0;
 		SERVER_PRINT(message);
+		return len;
 	}
 	else // A specific player's console
 	{
-		CPlayer* pPlayer = GET_PLAYER_POINTER_I(index);
+		CPlayer* pPlayer = GET_PLAYER_POINTER_I(params[1]);
 		if (pPlayer->ingame && !pPlayer->IsBot())
 		{
+			int len;
+			char* message = format_amxstring(amx, params, 2, len);
+
 			if (len > 125)	// Client console truncates after byte 127. (125 + \n\n = 127)
 			{
 				len = 125;
@@ -234,25 +247,27 @@ static cell AMX_NATIVE_CALL console_print(AMX *amx, cell *params) /* 2 param */
 			
 			message[len] = 0;
 			UTIL_ClientPrint(pPlayer->pEdict, HUD_PRINTCONSOLE, message);
+			return len;
 		}
 	}
 
-	return len;
+	return 0;
 }
 
 // print_notify and print_console are limited to 127 bytes, including the newline.
 // print_chat and print_center are not limited by *this* function.
 static cell AMX_NATIVE_CALL client_print(AMX *amx, cell *params) /* 3 param */
 {
-	int len = 0;
-	char *msg;
-	const bool canUseFormatString = (g_official_mod && !g_bmod_dod); // Temporary exclusion for DoD until officially supported
-
 	if (!params[1])	// 0 = All players
 	{
-		int i, j, bytesLimit;
+		const bool canUseFormatString = (g_official_mod && !g_bmod_dod); // Temporary exclusion for DoD until officially supported
+		int len = 0;
+		char* msg;
+		int j, bytesLimit;
 		CPlayer* pPlayer;
-		for (i = 1; i <= gpGlobals->maxClients; ++i)
+		int8_t i;
+		const int8_t max = static_cast<int8_t>(gpGlobals->maxClients);
+		for (i = 1; i <= max; ++i)
 		{
 			pPlayer = GET_PLAYER_POINTER_I(i);
 			if (pPlayer->ingame && !pPlayer->IsBot())
@@ -290,22 +305,25 @@ static cell AMX_NATIVE_CALL client_print(AMX *amx, cell *params) /* 3 param */
 				UTIL_ClientPrint(pPlayer->pEdict, params[2], msg);
 			}
 		}
+
+		return len;
 	}
 	else // A specific player
 	{
-		const int index = params[1];
-		if (index < 1 || index > gpGlobals->maxClients)
+		if (params[1] < 1 || params[1] > gpGlobals->maxClients)
 		{
-			LogError(amx, AMX_ERR_NATIVE, "Invalid player id %d", index);
+			LogError(amx, AMX_ERR_NATIVE, "Invalid player id %d", params[1]);
 			return 0;
 		}
 
-		CPlayer* pPlayer = GET_PLAYER_POINTER_I(index);
+		CPlayer* pPlayer = GET_PLAYER_POINTER_I(params[1]);
 		if (pPlayer->ingame && !pPlayer->IsBot())
 		{
-			g_langMngr.SetDefLang(index);
+			g_langMngr.SetDefLang(params[1]);
 
-			msg = format_amxstring(amx, params, 3, len);
+			int len;
+			char* msg = format_amxstring(amx, params, 3, len);
+			const bool canUseFormatString = (g_official_mod && !g_bmod_dod); // Temporary exclusion for DoD until officially supported
 
 			// Client console truncates after byte 127.
 			// If format string is used, limit includes double new lines (125 + \n\n), otherwise one new line (126 + \n).
@@ -337,13 +355,14 @@ static cell AMX_NATIVE_CALL client_print(AMX *amx, cell *params) /* 3 param */
 			
 			msg[len] = 0;
 			UTIL_ClientPrint(pPlayer->pEdict, params[2], msg);
+			return len;
 		}
 	}
 
-	return len;
+	return 0;
 }
 
-static cell AMX_NATIVE_CALL client_print_color(AMX *amx, cell *params) /* 3 param */
+static cell AMX_NATIVE_CALL client_print_color(AMX* amx, cell* params) /* 3 param */
 {
 	if (!g_bmod_cstrike)
 	{
@@ -351,21 +370,20 @@ static cell AMX_NATIVE_CALL client_print_color(AMX *amx, cell *params) /* 3 para
 		return client_print(amx, params);
 	}
 
-	int len = 0;
-	char *msg;
-	const int index = params[1];
 	int sender = params[2];
-
 	if (sender < print_team_blue || sender > gpGlobals->maxClients)
 		sender = print_team_default;
 	else if (sender < print_team_default)
-		sender = abs(sender) + 32; // align indexes to the TeamInfo ones.
+		sender = cabs(sender) + 32; // align indexes to the TeamInfo ones.
 
-	if (!index)
+	if (!params[1])
 	{
 		int i;
+		int len = 0;
+		char* msg;
 		CPlayer* pPlayer;
-		for (i = 1; i <= gpGlobals->maxClients; ++i)
+		const int8_t max = static_cast<int8_t>(gpGlobals->maxClients);
+		for (i = static_cast<int8_t>(1); i <= max; ++i)
 		{
 			pPlayer = GET_PLAYER_POINTER_I(i);
 			if (pPlayer->ingame && !pPlayer->IsBot())
@@ -375,7 +393,7 @@ static cell AMX_NATIVE_CALL client_print_color(AMX *amx, cell *params) /* 3 para
 
 				if (static_cast<byte>(*msg) > 4) // Insert default color code at the start if not present, otherwise message will not be colored.
 				{
-					memmove(msg + 1, msg, ke::Min(len++, 191));
+					cmemmove(msg + 1, msg, cmin(len++, 191));
 					*msg = 1;
 				}
 
@@ -390,24 +408,27 @@ static cell AMX_NATIVE_CALL client_print_color(AMX *amx, cell *params) /* 3 para
 				UTIL_ClientSayText(pPlayer->pEdict, sender ? sender : i, msg);
 			}
 		}
+
+		return len;
 	}
 	else
 	{
-		if (index < 1 || index > gpGlobals->maxClients)
+		if (params[1] < 1 || params[1] > gpGlobals->maxClients)
 		{
-			LogError(amx, AMX_ERR_NATIVE, "Invalid player id %d", index);
+			LogError(amx, AMX_ERR_NATIVE, "Invalid player id %d", params[1]);
 			return 0;
 		}
 
-		CPlayer* pPlayer = GET_PLAYER_POINTER_I(index);
+		CPlayer* pPlayer = GET_PLAYER_POINTER_I(params[1]);
 		if (pPlayer->ingame && !pPlayer->IsBot())
 		{
-			g_langMngr.SetDefLang(index);
-			msg = format_amxstring(amx, params, 3, len);
+			g_langMngr.SetDefLang(params[1]);
+			int len;
+			char* msg = format_amxstring(amx, params, 3, len);
 
 			if (static_cast<byte>(*msg) > 4) // Insert default color code at the start if not present, otherwise message will not be colored.
 			{
-				memmove(msg + 1, msg, ke::Min(len++, 191));
+				cmemmove(msg + 1, msg, cmin(len++, 191));
 				*msg = 1;
 			}
 
@@ -419,11 +440,12 @@ static cell AMX_NATIVE_CALL client_print_color(AMX *amx, cell *params) /* 3 para
 			}
 
 			msg[len] = 0;
-			UTIL_ClientSayText(pPlayer->pEdict, sender ? sender : index, msg);
+			UTIL_ClientSayText(pPlayer->pEdict, sender ? sender : params[1], msg);
+			return len;
 		}
 	}
 
-	return len;
+	return 0;
 }
 
 static cell AMX_NATIVE_CALL show_motd(AMX *amx, cell *params) /* 3 param */
@@ -445,11 +467,12 @@ static cell AMX_NATIVE_CALL show_motd(AMX *amx, cell *params) /* 3 param */
 	else
 		ilen = iFile;
 
-	if (params[1] == 0)
+	if (!params[1])
 	{
-		int i;
+		int8_t i;
+		const int8_t max = static_cast<int8_t>(gpGlobals->maxClients);
 		CPlayer* pPlayer;
-		for (i = 1; i <= gpGlobals->maxClients; ++i)
+		for (i = static_cast<int8_t>(1); i <= max; ++i)
 		{
 			pPlayer = GET_PLAYER_POINTER_I(i);
 			if (pPlayer->ingame && !pPlayer->IsBot())
@@ -458,17 +481,16 @@ static cell AMX_NATIVE_CALL show_motd(AMX *amx, cell *params) /* 3 param */
 	}
 	else
 	{
-		const int index = params[1];
-		if (index < 1 || index > gpGlobals->maxClients)
+		if (params[1] < 1 || params[1] > gpGlobals->maxClients)
 		{
-			LogError(amx, AMX_ERR_NATIVE, "Invalid player id %d", index);
+			LogError(amx, AMX_ERR_NATIVE, "Invalid player id %d", params[1]);
 			if (iFile)
 				FREE_FILE(sToShow);
 
 			return 0;
 		}
 
-		CPlayer* pPlayer = GET_PLAYER_POINTER_I(index);
+		CPlayer* pPlayer = GET_PLAYER_POINTER_I(params[1]);
 		if (pPlayer->ingame && !pPlayer->IsBot())
 			UTIL_ShowMOTD(pPlayer->pEdict, sToShow, ilen, szHead);
 	}
@@ -481,27 +503,25 @@ static cell AMX_NATIVE_CALL show_motd(AMX *amx, cell *params) /* 3 param */
 
 static cell AMX_NATIVE_CALL next_hudchannel(AMX *amx, cell *params)
 {
-	const int index = params[1];
-	if (index < 1 || index > gpGlobals->maxClients)
+	if (params[1] < 1 || params[1] > gpGlobals->maxClients)
 	{
-		LogError(amx, AMX_ERR_NATIVE, "Invalid player %d", index);
+		LogError(amx, AMX_ERR_NATIVE, "Invalid player %d", params[1]);
 		return 0;
 	}
 
-	CPlayer *pPlayer = GET_PLAYER_POINTER_I(index);
+	CPlayer *pPlayer = GET_PLAYER_POINTER_I(params[1]);
 	if (!pPlayer->ingame)
 	{
-		LogError(amx, AMX_ERR_NATIVE, "Player %d not in game", index);
+		LogError(amx, AMX_ERR_NATIVE, "Player %d not in game", params[1]);
 		return 0;
 	}
 
-	return pPlayer->NextHUDChannel();
+	return static_cast<cell>(pPlayer->NextHUDChannel());
 }
 
 static cell AMX_NATIVE_CALL set_hudmessage(AMX *amx, cell *params) /* 11 param */
 {
 	const cell num_params = params[0] / sizeof(cell);
-
 	if (num_params >= 13)
 	{
 		cell *color2 = get_amxaddr(amx, params[13]);
@@ -544,23 +564,20 @@ static cell AMX_NATIVE_CALL show_hudmessage(AMX *amx, cell *params) /* 2 param *
 	 *  "channel" stores the valid channel that core uses.
 	 *  "g_hudset.channel" stores the direct channel passed to the engine.
 	 */
-
-	const bool aut = (g_hudset.channel == -1) ? true : false;
-	int channel = -1;
-	if (!aut)
-	{
-		/**
-		 * guarantee this to be between 0-4
-		 * if it's not auto, we don't care
-		 */
-		channel = abs(g_hudset.channel % 5);
-	}
-
 	if (params[1] == 0)
 	{
-		int i, len;
+		bool aut;
+		if (g_hudset.channel < 0 || g_hudset.channel > 4)
+			aut = true;
+		else
+			aut = false;
+
+		uint_fast8_t channel;
+		int len;
 		CPlayer* pPlayer;
-		for (i = 1; i <= gpGlobals->maxClients; ++i)
+		int8_t i;
+		const int8_t max = static_cast<int8_t>(gpGlobals->maxClients);
+		for (i = 1; i <= max; ++i)
 		{
 			pPlayer = GET_PLAYER_POINTER_I(i);
 			if (pPlayer->ingame && !pPlayer->IsBot())
@@ -570,7 +587,7 @@ static cell AMX_NATIVE_CALL show_hudmessage(AMX *amx, cell *params) /* 2 param *
 				{
 					channel = pPlayer->NextHUDChannel();
 					pPlayer->channels[channel] = gpGlobals->time;
-					g_hudset.channel = channel;
+					g_hudset.channel = static_cast<int>(channel);
 				}
 
 				// don't need to set g_hudset!
@@ -583,21 +600,21 @@ static cell AMX_NATIVE_CALL show_hudmessage(AMX *amx, cell *params) /* 2 param *
 	}
 	else
 	{
-		const int index = params[1];
-		if (index < 1 || index > gpGlobals->maxClients)
+		if (params[1] < 1 || params[1] > gpGlobals->maxClients)
 		{
-			LogError(amx, AMX_ERR_NATIVE, "Invalid player id %d", index);
+			LogError(amx, AMX_ERR_NATIVE, "Invalid player id %d", params[1]);
 			return 0;
 		}
 
-		CPlayer* pPlayer = GET_PLAYER_POINTER_I(index);
+		CPlayer* pPlayer = GET_PLAYER_POINTER_I(params[1]);
 		if (pPlayer->ingame && !pPlayer->IsBot())
 		{
-			if (aut)
+			uint_fast8_t channel;
+			if (g_hudset.channel < 0 || g_hudset.channel > 4)
 			{
 				channel = pPlayer->NextHUDChannel();
 				pPlayer->channels[channel] = gpGlobals->time;
-				g_hudset.channel = channel;
+				g_hudset.channel = static_cast<int>(channel);
 			}
 
 			int len;
@@ -633,13 +650,14 @@ static cell AMX_NATIVE_CALL set_dhudmessage(AMX *amx, cell *params) /* 10 param 
 
 static cell AMX_NATIVE_CALL show_dhudmessage(AMX *amx, cell *params) /* 2 param */
 {
-	const int index = params[1];
-	if (!index)
+	if (!params[1])
 	{
-		int i, len;
-		char* message = nullptr;
+		int len = 0;
+		char* message;
 		CPlayer* pPlayer;
-		for (i = 1; i <= gpGlobals->maxClients; ++i)
+		int8_t i;
+		const int8_t max = static_cast<int8_t>(gpGlobals->maxClients);
+		for (i = 1; i <= max; ++i)
 		{
 			pPlayer = GET_PLAYER_POINTER_I(i);
 			if (pPlayer->ingame && !pPlayer->IsBot())
@@ -666,17 +684,17 @@ static cell AMX_NATIVE_CALL show_dhudmessage(AMX *amx, cell *params) /* 2 param 
 	}
 	else
 	{
-		if (index < 1 || index > gpGlobals->maxClients)
+		if (params[1] < 1 || params[1] > gpGlobals->maxClients)
 		{
-			LogError(amx, AMX_ERR_NATIVE, "Invalid player id %d", index);
+			LogError(amx, AMX_ERR_NATIVE, "Invalid player id %d", params[1]);
 			return 0;
 		}
 
-		CPlayer* pPlayer = GET_PLAYER_POINTER_I(index);
+		CPlayer* pPlayer = GET_PLAYER_POINTER_I(params[1]);
 		if (pPlayer->ingame && !pPlayer->IsBot())
 		{
 			int len;
-			g_langMngr.SetDefLang(index);
+			g_langMngr.SetDefLang(params[1]);
 			char* message = format_amxstring(amx, params, 2, len);
 
 			if (len > 127) // client truncates after byte 127
@@ -700,11 +718,10 @@ static cell AMX_NATIVE_CALL show_dhudmessage(AMX *amx, cell *params) /* 2 param 
 
 static cell AMX_NATIVE_CALL get_user_name(AMX *amx, cell *params) /* 3 param */
 {
-	const int index = params[1];
-	if (index < 1 || index > gpGlobals->maxClients)
-		return set_amxstring_utf8(amx, params[2], hostname->string, strlen(hostname->string), static_cast<size_t>(params[3]));
+	if (params[1] < 1 || params[1] > gpGlobals->maxClients)
+		return set_amxstring_utf8(amx, params[2], hostname->string, cstrlen(hostname->string), static_cast<size_t>(params[3]));
 	else
-		return set_amxstring_utf8(amx, params[2], g_players[index].name.chars(), g_players[index].name.length(), static_cast<size_t>(params[3]));
+		return set_amxstring_utf8(amx, params[2], g_players[params[1]].name.chars(), g_players[params[1]].name.length(), static_cast<size_t>(params[3]));
 }
 
 static cell AMX_NATIVE_CALL get_user_index(AMX *amx, cell *params) /* 1 param */
@@ -715,7 +732,7 @@ static cell AMX_NATIVE_CALL get_user_index(AMX *amx, cell *params) /* 1 param */
 	for (i = 1; i <= gpGlobals->maxClients; ++i)
 	{
 		pPlayer = GET_PLAYER_POINTER_I(i);
-		if (strcmp(pPlayer->name.chars(), sptemp) == 0)
+		if (cstrcmp(pPlayer->name.chars(), sptemp) == 0)
 			return i;
 	}
 
@@ -756,45 +773,40 @@ static cell AMX_NATIVE_CALL is_jit_enabled(AMX *amx, cell *params) // PM: Useles
 
 static cell AMX_NATIVE_CALL is_map_valid(AMX *amx, cell *params) /* 1 param */
 {
-	int ilen;
-	return (IS_MAP_VALID(get_amxstring(amx, params[1], 0, ilen)) ? 1 : 0);
+	return (IS_MAP_VALID(get_amxstring_nolen(amx, params[1], 0)) ? 1 : 0);
 }
 
 static cell AMX_NATIVE_CALL is_user_connected(AMX *amx, cell *params) /* 1 param */
 {
-	const int index = params[1];
-	if (index < 1 || index > gpGlobals->maxClients)
+	if (params[1] < 1 || params[1] > gpGlobals->maxClients)
 		return 0;
 
-	return (GET_PLAYER_POINTER_I(index)->ingame ? 1 : 0);
+	return (GET_PLAYER_POINTER_I(params[1])->ingame ? 1 : 0);
 }
 
 static cell AMX_NATIVE_CALL is_user_connecting(AMX *amx, cell *params) /* 1 param */
 {
-	const int index = params[1];
-	if (index < 1 || index > gpGlobals->maxClients)
+	if (params[1] < 1 || params[1] > gpGlobals->maxClients)
 		return 0;
 
-	CPlayer* pPlayer = GET_PLAYER_POINTER_I(index);
+	CPlayer* pPlayer = GET_PLAYER_POINTER_I(params[1]);
 	return (!pPlayer->ingame && pPlayer->initialized && (GETPLAYERUSERID(pPlayer->pEdict) > 0)) ? 1 : 0;
 }
 
 static cell AMX_NATIVE_CALL is_user_bot(AMX *amx, cell *params) /* 1 param */
 {
-	const int index = params[1];
-	if (index < 1 || index > gpGlobals->maxClients)
+	if (params[1] < 1 || params[1] > gpGlobals->maxClients)
 		return 0;
 
-	return (GET_PLAYER_POINTER_I(index)->IsBot() ? 1 : 0);
+	return (GET_PLAYER_POINTER_I(params[1])->IsBot() ? 1 : 0);
 }
 
 static cell AMX_NATIVE_CALL is_user_hltv(AMX *amx, cell *params) /* 1 param */
 {
-	const int index = params[1];
-	if (index < 1 || index > gpGlobals->maxClients)
+	if (params[1] < 1 || params[1] > gpGlobals->maxClients)
 		return 0;
 
-	CPlayer *pPlayer = GET_PLAYER_POINTER_I(index);
+	CPlayer *pPlayer = GET_PLAYER_POINTER_I(params[1]);
 	if (!pPlayer->initialized)
 		return 0;
 
@@ -802,23 +814,22 @@ static cell AMX_NATIVE_CALL is_user_hltv(AMX *amx, cell *params) /* 1 param */
 		return 1;
 
 	const char *authid = GETPLAYERAUTHID(pPlayer->pEdict);
-	if (authid != nullptr && stricmp(authid, "HLTV") == 0)
+	if (authid != nullptr && cstricmp(authid, "HLTV") == 0)
 		return 1;
 
 	return 0;
 }
 
+extern bool g_bmod_tfc;
 static cell AMX_NATIVE_CALL is_user_alive(AMX *amx, cell *params) /* 1 param */
 {
-	const int index = params[1];
-	if (index < 1 || index > gpGlobals->maxClients)
+	if (params[1] < 1 || params[1] > gpGlobals->maxClients)
 		return 0;
 
-	CPlayer* pPlayer = GET_PLAYER_POINTER_I(index);
+	CPlayer* pPlayer = GET_PLAYER_POINTER_I(params[1]);
 	if (!pPlayer->ingame)
 		return 0;
 
-	extern bool g_bmod_tfc;
 	if (g_bmod_tfc)
 	{
 		edict_t *e = pPlayer->pEdict;
@@ -836,11 +847,10 @@ static cell AMX_NATIVE_CALL get_amxx_verstring(AMX *amx, cell *params) /* 2 para
 
 static cell AMX_NATIVE_CALL get_user_frags(AMX *amx, cell *params) /* 1 param */
 {
-	const int index = params[1];
-	if (index < 1 || index > gpGlobals->maxClients)
+	if (params[1] < 1 || params[1] > gpGlobals->maxClients)
 		return 0;
 
-	CPlayer* pPlayer = GET_PLAYER_POINTER_I(index);
+	CPlayer* pPlayer = GET_PLAYER_POINTER_I(params[1]);
 	if (pPlayer->ingame)
 		return static_cast<cell>(pPlayer->pEdict->v.frags);
 
@@ -849,11 +859,10 @@ static cell AMX_NATIVE_CALL get_user_frags(AMX *amx, cell *params) /* 1 param */
 
 static cell AMX_NATIVE_CALL get_user_deaths(AMX *amx, cell *params) /* 1 param */
 {
-	const int index = params[1];
-	if (index < 1 || index > gpGlobals->maxClients)
+	if (params[1] < 1 || params[1] > gpGlobals->maxClients)
 		return 0;
 
-	CPlayer* pPlayer = GET_PLAYER_POINTER_I(index);
+	CPlayer* pPlayer = GET_PLAYER_POINTER_I(params[1]);
 	if (pPlayer->ingame)
 		return static_cast<cell>(pPlayer->deaths);
 
@@ -862,11 +871,10 @@ static cell AMX_NATIVE_CALL get_user_deaths(AMX *amx, cell *params) /* 1 param *
 
 static cell AMX_NATIVE_CALL get_user_armor(AMX *amx, cell *params) /* 1 param */
 {
-	const int index = params[1];
-	if (index < 1 || index > gpGlobals->maxClients)
+	if (params[1] < 1 || params[1] > gpGlobals->maxClients)
 		return 0;
 
-	CPlayer* pPlayer = GET_PLAYER_POINTER_I(index);
+	CPlayer* pPlayer = GET_PLAYER_POINTER_I(params[1]);
 	if (pPlayer->index)
 		return static_cast<cell>(pPlayer->pEdict->v.armorvalue);
 
@@ -875,11 +883,10 @@ static cell AMX_NATIVE_CALL get_user_armor(AMX *amx, cell *params) /* 1 param */
 
 static cell AMX_NATIVE_CALL get_user_health(AMX *amx, cell *params) /* param */
 {
-	const int index = params[1];
-	if (index < 1 || index > gpGlobals->maxClients)
+	if (params[1] < 1 || params[1] > gpGlobals->maxClients)
 		return 0;
 
-	CPlayer* pPlayer = GET_PLAYER_POINTER_I(index);
+	CPlayer* pPlayer = GET_PLAYER_POINTER_I(params[1]);
 	if (pPlayer->ingame)
 		return static_cast<cell>(pPlayer->pEdict->v.health);
 
@@ -888,11 +895,10 @@ static cell AMX_NATIVE_CALL get_user_health(AMX *amx, cell *params) /* param */
 
 static cell AMX_NATIVE_CALL get_user_userid(AMX *amx, cell *params) /* 1 param */
 {
-	const int index = params[1];
-	if (index < 1 || index > gpGlobals->maxClients)
+	if (params[1] < 1 || params[1] > gpGlobals->maxClients)
 		return 0;
 
-	CPlayer* pPlayer = GET_PLAYER_POINTER_I(index);
+	CPlayer* pPlayer = GET_PLAYER_POINTER_I(params[1]);
 	if (pPlayer->initialized)
 		return static_cast<cell>(GETPLAYERUSERID(pPlayer->pEdict));
 
@@ -901,44 +907,41 @@ static cell AMX_NATIVE_CALL get_user_userid(AMX *amx, cell *params) /* 1 param *
 
 static cell AMX_NATIVE_CALL get_user_authid(AMX *amx, cell *params) /* 3 param */
 {
-	const int index = params[1];
 	const char* authid = nullptr;
-	if (index > 0 && index <= gpGlobals->maxClients)
-		authid = GETPLAYERAUTHID(g_players[index].pEdict);
+	if (params[1] > 0 && params[1] <= gpGlobals->maxClients)
+		authid = GETPLAYERAUTHID(g_players[params[1]].pEdict);
 
 	return set_amxstring(amx, params[2], authid ? authid : "", params[3]);
 }
 
 static cell AMX_NATIVE_CALL is_user_authorized(AMX *amx, cell *params)
 {
-	const int index = params[1];
-	if (index < 1 || index > gpGlobals->maxClients)
+	if (params[1] < 1 || params[1] > gpGlobals->maxClients)
 		return 0;
 
-	return GET_PLAYER_POINTER_I(index)->authorized;
+	return GET_PLAYER_POINTER_I(params[1])->authorized;
 }
 
 static cell AMX_NATIVE_CALL get_weaponname(AMX *amx, cell *params) /* 3 param */
 {
-	const int index = params[1];
-	if (index < 1 || index >= MAX_WEAPONS)
+	if (params[1] < 1 || params[1] >= MAX_WEAPONS)
 	{
-		LogError(amx, AMX_ERR_NATIVE, "Invalid weapon id %d", index);
+		LogError(amx, AMX_ERR_NATIVE, "Invalid weapon id %d", params[1]);
 		return 0;
 	}
 
-	return set_amxstring(amx, params[2], g_weaponsData[index].fullName.chars(), params[3]);
+	return set_amxstring(amx, params[2], g_weaponsData[params[1]].fullName.chars(), params[3]);
 }
 
 static cell AMX_NATIVE_CALL get_weaponid(AMX *amx, cell *params)
 {
-	int ilen;
-	const char* name = get_amxstring(amx, params[1], 0, ilen);
+	const char* name = get_amxstring_nolen(amx, params[1], 0);
 
-	int i;
-	for (i = 1; i < MAX_WEAPONS; i++)
+	int8_t i;
+	constexpr int8_t max = static_cast<int8_t>(MAX_WEAPONS);
+	for (i = 1; i < max; i++)
 	{
-		if (!strcmp(g_weaponsData[i].fullName.chars(), name))
+		if (!cstrcmp(g_weaponsData[i].fullName.chars(), name))
 			return g_weaponsData[i].iId;
 	}
 
@@ -947,14 +950,13 @@ static cell AMX_NATIVE_CALL get_weaponid(AMX *amx, cell *params)
 
 static cell AMX_NATIVE_CALL get_user_weapons(AMX *amx, cell *params) /* 3 param */
 {
-	const int index = params[1];
-	if (index < 1 || index > gpGlobals->maxClients)
+	if (params[1] < 1 || params[1] > gpGlobals->maxClients)
 	{
-		LogError(amx, AMX_ERR_NATIVE, "Invalid player id %d", index);
+		LogError(amx, AMX_ERR_NATIVE, "Invalid player id %d", params[1]);
 		return 0;
 	}
 
-	CPlayer* pPlayer = GET_PLAYER_POINTER_I(index);
+	CPlayer* pPlayer = GET_PLAYER_POINTER_I(params[1]);
 	if (pPlayer->ingame)
 	{
 		cell *cpNum = get_amxaddr(amx, params[3]);
@@ -968,10 +970,11 @@ static cell AMX_NATIVE_CALL get_user_weapons(AMX *amx, cell *params) /* 3 param 
 			weapons = pPlayer->pEdict->v.weapons;
 		}
 
-		int i;
-		for (i = 1; i < MAX_WEAPONS; ++i)
+		int8_t i;
+		constexpr int8_t max = static_cast<int8_t>(MAX_WEAPONS);
+		for (i = 1; i < max; ++i)
 		{
-			if (weapons & (1<<i))
+			if (weapons & (1 << i))
 			{
 				*(cpIds+(*cpNum)) = i;
 				(*cpNum)++;
@@ -986,20 +989,17 @@ static cell AMX_NATIVE_CALL get_user_weapons(AMX *amx, cell *params) /* 3 param 
 
 static cell AMX_NATIVE_CALL get_user_origin(AMX *amx, cell *params) /* 3 param */
 {
-	const int index = params[1];
-	if (index < 1 || index > gpGlobals->maxClients)
+	if (params[1] < 1 || params[1] > gpGlobals->maxClients)
 	{
-		LogError(amx, AMX_ERR_NATIVE, "Invalid player id %d", index);
+		LogError(amx, AMX_ERR_NATIVE, "Invalid player id %d", params[1]);
 		return 0;
 	}
 
-	CPlayer* pPlayer = GET_PLAYER_POINTER_I(index);
+	CPlayer* pPlayer = GET_PLAYER_POINTER_I(params[1]);
 	if (pPlayer->ingame)
 	{
-		const int mode = params[3];
 		cell *cpOrigin = get_amxaddr(amx, params[2]);
-
-		if (mode == 4)
+		if (params[3] == 4)
 		{
 			cpOrigin[0] = static_cast<cell>(pPlayer->lastHit.x);
 			cpOrigin[1] = static_cast<cell>(pPlayer->lastHit.y);
@@ -1010,10 +1010,10 @@ static cell AMX_NATIVE_CALL get_user_origin(AMX *amx, cell *params) /* 3 param *
 		edict_t* edict = pPlayer->pEdict;
 		Vector pos = edict->v.origin;
 
-		if (mode && mode != 2)
+		if (params[3] && params[3] != 2)
 			pos = pos + edict->v.view_ofs;
 
-		if (mode > 1)
+		if (params[3] > 1)
 		{
 			Vector vec;
 			const Vector v_angle = edict->v.v_angle;
@@ -1052,17 +1052,16 @@ static cell AMX_NATIVE_CALL get_user_origin(AMX *amx, cell *params) /* 3 param *
 
 static cell AMX_NATIVE_CALL get_user_ip(AMX *amx, cell *params) /* 3 param */
 {
-	const int index = params[1];
-	if (index < 0 || index > gpGlobals->maxClients)
+	if (!params[1] || params[1] > gpGlobals->maxClients)
 	{
-		LogError(amx, AMX_ERR_NATIVE, "Invalid player id %d", index);
+		LogError(amx, AMX_ERR_NATIVE, "Invalid player id %d", params[1]);
 		return 0;
 	}
 
 	char *ptr;
 	char szIp[32];
-	strcpy(szIp, (index < 1 || index > gpGlobals->maxClients) ? CVAR_GET_STRING("net_address") : g_players[index].ip.chars());
-	if (params[4] && (ptr = strstr(szIp, ":")) != 0)
+	cstrcpy(szIp, (params[1] < 1 || params[1] > gpGlobals->maxClients) ? CVAR_GET_STRING("net_address") : g_players[params[1]].ip.chars());
+	if (params[4] && (ptr = cstrstr(szIp, ":")) != 0)
 		*ptr = '\0';
 
 	return set_amxstring(amx, params[2], szIp, params[3]);
@@ -1070,14 +1069,13 @@ static cell AMX_NATIVE_CALL get_user_ip(AMX *amx, cell *params) /* 3 param */
 
 static cell AMX_NATIVE_CALL get_user_attacker(AMX *amx, cell *params) /* 2 param */
 {
-	const int index = params[1];
-	if (index < 1 || index > gpGlobals->maxClients)
+	if (params[1] < 1 || params[1] > gpGlobals->maxClients)
 	{
-		LogError(amx, AMX_ERR_NATIVE, "Invalid player id %d", index);
+		LogError(amx, AMX_ERR_NATIVE, "Invalid player id %d", params[1]);
 		return 0;
 	}
 
-	CPlayer* pPlayer = GET_PLAYER_POINTER_I(index);
+	CPlayer* pPlayer = GET_PLAYER_POINTER_I(params[1]);
 	if (pPlayer->ingame)
 	{
 		edict_t* enemy = pPlayer->pEdict->v.dmg_inflictor;
@@ -1129,14 +1127,13 @@ static cell AMX_NATIVE_CALL get_user_attacker(AMX *amx, cell *params) /* 2 param
 
 static cell AMX_NATIVE_CALL user_has_weapon(AMX *amx, cell *params)
 {
-	const int index = params[1];
-	if (index < 1 || index > gpGlobals->maxClients)
+	if (params[1] < 1 || params[1] > gpGlobals->maxClients)
 	{
-		LogError(amx, AMX_ERR_NATIVE, "Invalid player id %d", index);
+		LogError(amx, AMX_ERR_NATIVE, "Invalid player id %d", params[1]);
 		return 0;
 	}
 
-	CPlayer* pPlayer = GET_PLAYER_POINTER_I(index);
+	CPlayer* pPlayer = GET_PLAYER_POINTER_I(params[1]);
 	if (!pPlayer->ingame)
 		return 0;
 
@@ -1174,14 +1171,13 @@ static cell AMX_NATIVE_CALL user_has_weapon(AMX *amx, cell *params)
 
 static cell AMX_NATIVE_CALL get_user_weapon(AMX *amx, cell *params) /* 3 param */
 {
-	const int index = params[1];
-	if (index < 1 || index > gpGlobals->maxClients)
+	if (params[1] < 1 || params[1] > gpGlobals->maxClients)
 	{
-		LogError(amx, AMX_ERR_NATIVE, "Invalid player id %d", index);
+		LogError(amx, AMX_ERR_NATIVE, "Invalid player id %d", params[1]);
 		return 0;
 	}
 
-	CPlayer* pPlayer = GET_PLAYER_POINTER_I(index);
+	CPlayer* pPlayer = GET_PLAYER_POINTER_I(params[1]);
 	if (pPlayer->ingame)
 	{
 		const int wpn = pPlayer->current;
@@ -1197,14 +1193,13 @@ static cell AMX_NATIVE_CALL get_user_weapon(AMX *amx, cell *params) /* 3 param *
 
 static cell AMX_NATIVE_CALL get_user_ammo(AMX *amx, cell *params) /* 4 param */
 {
-	const int index = params[1];
-	if (index < 1 || index > gpGlobals->maxClients)
+	if (params[1] < 1 || params[1] > gpGlobals->maxClients)
 	{
-		LogError(amx, AMX_ERR_NATIVE, "Invalid player id %d", index);
+		LogError(amx, AMX_ERR_NATIVE, "Invalid player id %d", params[1]);
 		return 0;
 	}
 
-	CPlayer* pPlayer = GET_PLAYER_POINTER_I(index);
+	CPlayer* pPlayer = GET_PLAYER_POINTER_I(params[1]);
 	if (pPlayer->ingame)
 	{
 		const int wpn = params[2];
@@ -1213,6 +1208,7 @@ static cell AMX_NATIVE_CALL get_user_ammo(AMX *amx, cell *params) /* 4 param */
 			LogError(amx, AMX_ERR_NATIVE, "Invalid weapon id %d", wpn);
 			return 0;
 		}
+
 		cell *cpTemp = get_amxaddr(amx, params[3]);
 		*cpTemp = pPlayer->weapons[wpn].clip;
 		cpTemp = get_amxaddr(amx, params[4]);
@@ -1225,11 +1221,10 @@ static cell AMX_NATIVE_CALL get_user_ammo(AMX *amx, cell *params) /* 4 param */
 
 static cell AMX_NATIVE_CALL get_user_team(AMX *amx, cell *params) /* 3 param */
 {
-	const int index = params[1];
-	if (index < 1 || index > gpGlobals->maxClients)
+	if (params[1] < 1 || params[1] > gpGlobals->maxClients)
 		return -1;
 
-	CPlayer* pPlayer = GET_PLAYER_POINTER_I(index);
+	CPlayer* pPlayer = GET_PLAYER_POINTER_I(params[1]);
 	if (pPlayer->ingame)
 	{
 		// SidLuke, DoD fix
@@ -1270,7 +1265,7 @@ static cell AMX_NATIVE_CALL get_user_team(AMX *amx, cell *params) /* 3 param */
 
 static cell AMX_NATIVE_CALL show_menu(AMX *amx, cell *params) /* 3 param */
 {
-	auto closeMenu = [amx](int index) -> int
+	auto closeMenu = [amx](const int index) -> int
 	{
 		CPlayer* pPlayer = GET_PLAYER_POINTER_I(index);
 		if (!pPlayer->ingame)
@@ -1298,17 +1293,16 @@ static cell AMX_NATIVE_CALL show_menu(AMX *amx, cell *params) /* 3 param */
 		return 0;
 	};
 
-	const int index = params[1];
-
 	// If show_menu is called from within a newmenu callback upon receiving MENU_EXIT
 	// it is possible for this native to recurse. We need to close newmenus right away
 	// because the recursive call would otherwise modify/corrupt the static get_amxstring
 	// buffer mid execution. This will either display incorrect text or result in UTIL_ShowMenu
 	// running into an infinite loop.
-	int i;
-	if (index == 0)
+	int8_t i;
+	const int8_t max = static_cast<int8_t>(gpGlobals->maxClients);
+	if (!params[1])
 	{
-		for (i = 1; i <= gpGlobals->maxClients; ++i)
+		for (i = 1; i <= max; ++i)
 		{
 			if (closeMenu(i) == 2)
 				return 0;
@@ -1316,13 +1310,13 @@ static cell AMX_NATIVE_CALL show_menu(AMX *amx, cell *params) /* 3 param */
 	}
 	else
 	{
-		if (index < 1 || index > gpGlobals->maxClients)
+		if (params[1] < 1 || params[1] > gpGlobals->maxClients)
 		{
-			LogError(amx, AMX_ERR_NATIVE, "Invalid player id %d", index);
+			LogError(amx, AMX_ERR_NATIVE, "Invalid player id %d", params[1]);
 			return 0;
 		}
 
-		if (closeMenu(index) == 2)
+		if (closeMenu(params[1]) == 2)
 			return 0;
 	}
 
@@ -1336,47 +1330,44 @@ static cell AMX_NATIVE_CALL show_menu(AMX *amx, cell *params) /* 3 param */
 	else
 		menuid = g_menucmds.findMenuId(sMenu, amx);
 
-	int keys = params[2];
-	int time = params[4];
-
-	if (index == 0)
+	if (!params[1])
 	{
 		CPlayer* pPlayer;
-		for (i = 1; i <= gpGlobals->maxClients; ++i)
+		for (i = static_cast<int8_t>(1); i <= max; ++i)
 		{
 			pPlayer = GET_PLAYER_POINTER_I(i);
 			if (pPlayer->ingame)
 			{
-				pPlayer->keys = keys;
+				pPlayer->keys = params[2];
 				pPlayer->menu = menuid;
 				pPlayer->vgui = false;
 
-				if (time == -1)
+				if (params[4] == -1)
 					pPlayer->menuexpire = static_cast<float>(INFINITE);
 				else
-					pPlayer->menuexpire = gpGlobals->time + static_cast<float>(time);
+					pPlayer->menuexpire = gpGlobals->time + static_cast<float>(params[4]);
 
 				pPlayer->page = 0;
-				UTIL_ShowMenu(pPlayer->pEdict, keys, time, sMenu, ilen);
+				UTIL_ShowMenu(pPlayer->pEdict, params[2], params[4], sMenu, ilen);
 			}
 		}
 	}
 	else
 	{
-		CPlayer* pPlayer = GET_PLAYER_POINTER_I(index);
+		CPlayer* pPlayer = GET_PLAYER_POINTER_I(params[1]);
 		if (pPlayer->ingame)
 		{
-			pPlayer->keys = keys;
+			pPlayer->keys = params[2];
 			pPlayer->menu = menuid;
 			pPlayer->vgui = false;
 
-			if (time == -1)
+			if (params[4] == -1)
 				pPlayer->menuexpire = static_cast<float>(INFINITE);
 			else
-				pPlayer->menuexpire = gpGlobals->time + static_cast<float>(time);
+				pPlayer->menuexpire = gpGlobals->time + static_cast<float>(params[4]);
 
 			pPlayer->page = 0;
-			UTIL_ShowMenu(pPlayer->pEdict, keys, time, sMenu, ilen);
+			UTIL_ShowMenu(pPlayer->pEdict, params[2], params[4], sMenu, ilen);
 		}
 	}
 
@@ -1386,7 +1377,7 @@ static cell AMX_NATIVE_CALL show_menu(AMX *amx, cell *params) /* 3 param */
 static cell AMX_NATIVE_CALL register_plugin(AMX *amx, cell *params) /* 5 param */
 {
 	CPluginMngr::CPlugin* a = g_plugins.findPluginFast(amx);
-	if (a == nullptr)
+	if (!a)
 		return 0;
 
 	enum { arg_count, arg_title, arg_version, arg_author, arg_url, arg_description };
@@ -1406,17 +1397,31 @@ static cell AMX_NATIVE_CALL register_plugin(AMX *amx, cell *params) /* 5 param *
 	}
 
 	/* Check if we need to add fail counters */
+	struct NONGPL_PLUGIN_T
+	{
+		const char* author;
+		const char* title;
+		const char* filename;
+	};
+
+	NONGPL_PLUGIN_T NONGPL_PLUGIN_LIST[] =
+	{
+		{"Live", "CZ Gun Game", "czgungame.amxx"},
+		{"Live", "AMXX Gun Game", "czgungame.amxx"},
+		{nullptr, nullptr, nullptr},
+	};
+
 	i = 0;
 	unsigned int counter = 0;
 	while (NONGPL_PLUGIN_LIST[i].author != nullptr)
 	{
-		if (strcmp(NONGPL_PLUGIN_LIST[i].author, a->getAuthor()) == 0)
+		if (cstrcmp(NONGPL_PLUGIN_LIST[i].author, a->getAuthor()) == 0)
 			counter++;
 
-		if (stricmp(NONGPL_PLUGIN_LIST[i].filename, a->getName()) == 0)
+		if (cstricmp(NONGPL_PLUGIN_LIST[i].filename, a->getName()) == 0)
 			counter++;
 
-		if (stricmp(NONGPL_PLUGIN_LIST[i].title, a->getTitle()) == 0)
+		if (cstricmp(NONGPL_PLUGIN_LIST[i].title, a->getTitle()) == 0)
 			counter++;
 
 		if (counter)
@@ -1434,7 +1439,7 @@ static cell AMX_NATIVE_CALL register_plugin(AMX *amx, cell *params) /* 5 param *
 static cell AMX_NATIVE_CALL register_menucmd(AMX *amx, cell *params) /* 3 param */
 {
 	CPluginMngr::CPlugin* plugin = g_plugins.findPluginFast(amx);
-	if (plugin == nullptr)
+	if (!plugin)
 		return 0;
 
 	int ilen, idx;
@@ -1467,7 +1472,7 @@ static cell AMX_NATIVE_CALL get_plugin(AMX *amx, cell *params) /* 15 param */
 	else
 		a = g_plugins.findPlugin((int)params[arg_plugin]);
 
-	if (a != nullptr)
+	if (a)
 	{
 		set_amxstring(amx, params[arg_name], a->getName(), params[arg_namelen]);
 		set_amxstring(amx, params[arg_title], a->getTitle(), params[arg_titlelen]);
@@ -1551,7 +1556,7 @@ static cell AMX_NATIVE_CALL get_pluginsnum(AMX *amx, cell *params)
 static cell AMX_NATIVE_CALL register_concmd(AMX *amx, cell *params)
 {
 	CPluginMngr::CPlugin* plugin = g_plugins.findPluginFast(amx);
-	if (plugin == nullptr)
+	if (!plugin)
 		return 0;
 
 	int i, idx = 0;
@@ -1594,7 +1599,7 @@ static cell AMX_NATIVE_CALL register_concmd(AMX *amx, cell *params)
 static cell AMX_NATIVE_CALL register_clcmd(AMX *amx, cell *params)
 {
 	CPluginMngr::CPlugin* plugin = g_plugins.findPluginFast(amx);
-	if (plugin == nullptr)
+	if (!plugin)
 		return 0;
 
 	int i, idx = 0;
@@ -1633,7 +1638,7 @@ static cell AMX_NATIVE_CALL register_clcmd(AMX *amx, cell *params)
 static cell AMX_NATIVE_CALL register_srvcmd(AMX *amx, cell *params)
 {
 	CPluginMngr::CPlugin* plugin = g_plugins.findPluginFast(amx);
-	if (plugin == nullptr)
+	if (!plugin)
 		return 0;
 
 	int i, idx = 0;
@@ -1681,8 +1686,8 @@ static cell AMX_NATIVE_CALL get_concmd(AMX *amx, cell *params)
 	if (cmd == nullptr)
 		return 0;
 
-	set_amxstring_utf8(amx, params[2], cmd->getCmdLine(), strlen(cmd->getCmdLine()), params[3]);
-	set_amxstring_utf8(amx, params[5], cmd->getCmdInfo(), strlen(cmd->getCmdInfo()), params[6]);
+	set_amxstring_utf8(amx, params[2], cmd->getCmdLine(), cstrlen(cmd->getCmdLine()), params[3]);
+	set_amxstring_utf8(amx, params[5], cmd->getCmdInfo(), cstrlen(cmd->getCmdInfo()), params[6]);
 	cell *cpFlags = get_amxaddr(amx, params[4]);
 	*cpFlags = cmd->getFlags();
 	if (*params / sizeof(cell) >= 9)
@@ -1715,8 +1720,8 @@ static cell AMX_NATIVE_CALL get_clcmd(AMX *amx, cell *params)
 	if (cmd == nullptr)
 		return 0;
 
-	set_amxstring_utf8(amx, params[2], cmd->getCmdLine(), strlen(cmd->getCmdLine()), params[3]);
-	set_amxstring_utf8(amx, params[5], cmd->getCmdInfo(), strlen(cmd->getCmdInfo()), params[6]);
+	set_amxstring_utf8(amx, params[2], cmd->getCmdLine(), cstrlen(cmd->getCmdLine()), params[3]);
+	set_amxstring_utf8(amx, params[5], cmd->getCmdInfo(), cstrlen(cmd->getCmdInfo()), params[6]);
 	cell *cpFlags = get_amxaddr(amx, params[4]);
 	*cpFlags = cmd->getFlags();
 	if (*params / sizeof(cell) >= 8)
@@ -1732,8 +1737,8 @@ static cell AMX_NATIVE_CALL get_srvcmd(AMX *amx, cell *params)
 	if (cmd == nullptr)
 		return 0;
 
-	set_amxstring_utf8(amx, params[2], cmd->getCmdLine(), strlen(cmd->getCmdLine()), params[3]);
-	set_amxstring_utf8(amx, params[5], cmd->getCmdInfo(), strlen(cmd->getCmdInfo()), params[6]);
+	set_amxstring_utf8(amx, params[2], cmd->getCmdLine(), cstrlen(cmd->getCmdLine()), params[3]);
+	set_amxstring_utf8(amx, params[5], cmd->getCmdInfo(), cstrlen(cmd->getCmdInfo()), params[6]);
 	cell *cpFlags = get_amxaddr(amx, params[4]);
 	*cpFlags = cmd->getFlags();
 	if (*params / sizeof(cell) >= 8)
@@ -1767,7 +1772,7 @@ static cell AMX_NATIVE_CALL get_concmdsnum(AMX *amx, cell *params) /* 1 param */
 static cell AMX_NATIVE_CALL register_event(AMX *amx, cell *params)
 {
 	CPluginMngr::CPlugin* plugin = g_plugins.findPluginFast(amx);
-	if (plugin == nullptr)
+	if (!plugin)
 		return 0;
 
 	int len, eventId, forwardId;
@@ -1892,9 +1897,9 @@ static cell AMX_NATIVE_CALL user_slap(AMX *amx, cell *params) /* 2 param */
 			const int numparam = *params / sizeof(cell);
 			if (numparam < 3 || params[3])
 			{
-				pEdict->v.velocity.x += RANDOM_FLOAT(-600.0f, 600.0f);
-				pEdict->v.velocity.y += RANDOM_FLOAT(-180.0f, 180.0f);
-				pEdict->v.velocity.z += RANDOM_FLOAT(100.0f, 200.0f);
+				pEdict->v.velocity.x += crandomfloat(-600.0f, 600.0f);
+				pEdict->v.velocity.y += crandomfloat(-180.0f, 180.0f);
+				pEdict->v.velocity.z += crandomfloat(100.0f, 200.0f);
 			}
 			else
 			{
@@ -1908,8 +1913,8 @@ static cell AMX_NATIVE_CALL user_slap(AMX *amx, cell *params) /* 2 param */
 				pEdict->v.velocity = pEdict->v.velocity + v_forward * 220.0f + Vector(0.0f, 0.0f, 200.0f);
 			}
 
-			pEdict->v.punchangle.x = RANDOM_LONG(-10.0f, 10.0f);
-			pEdict->v.punchangle.y = RANDOM_LONG(-10.0f, 10.0f);
+			pEdict->v.punchangle.x = crandomfloat(-10.0f, 10.0f);
+			pEdict->v.punchangle.y = crandomfloat(-10.0f, 10.0f);
 			pEdict->v.health -= power;
 
 			int armor = static_cast<int>(pEdict->v.armorvalue);
@@ -1931,7 +1936,7 @@ static cell AMX_NATIVE_CALL user_slap(AMX *amx, cell *params) /* 2 param */
 					"player/pl_pain6.wav"
 				};
 
-				EMIT_SOUND_DYN2(pEdict, CHAN_VOICE, cs_sound[RANDOM_LONG(0, 3)], 1.0, ATTN_NORM, 0, PITCH_NORM);
+				EMIT_SOUND_DYN2(pEdict, CHAN_VOICE, cs_sound[crandomint(0, 3)], 1.0, ATTN_NORM, 0, PITCH_NORM);
 			}
 			else
 			{
@@ -1942,7 +1947,7 @@ static cell AMX_NATIVE_CALL user_slap(AMX *amx, cell *params) /* 2 param */
 					"weapons/cbar_hitbod3.wav"
 				};
 
-				EMIT_SOUND_DYN2(pEdict, CHAN_VOICE, bit_sound[RANDOM_LONG(0, 2)], 1.0, ATTN_NORM, 0, PITCH_NORM);
+				EMIT_SOUND_DYN2(pEdict, CHAN_VOICE, bit_sound[crandomint(0, 2)], 1.0, ATTN_NORM, 0, PITCH_NORM);
 			}*/
 		}
 
@@ -2180,7 +2185,7 @@ static cell AMX_NATIVE_CALL read_data(AMX *amx, cell *params) /* 3 param */
 		case 1:
 			return g_events.getArgInteger(params[1]);
 		case 3:
-			return set_amxstring_utf8(amx, params[2], g_events.getArgString(params[1]), strlen(g_events.getArgString(params[1])),*get_amxaddr(amx, params[3]));
+			return set_amxstring_utf8(amx, params[2], g_events.getArgString(params[1]), cstrlen(g_events.getArgString(params[1])),*get_amxaddr(amx, params[3]));
 		default:
 		{
 			cell* fCell = get_amxaddr(amx, params[2]);
@@ -2264,7 +2269,7 @@ static cell AMX_NATIVE_CALL get_players(AMX *amx, cell *params) /* 4 param */
 					if (utf8stristr(pPlayer->name.chars(), sptemp) == nullptr)
 						continue;
 				}
-				else if (strstr(pPlayer->name.chars(), sptemp) == nullptr)
+				else if (cstrstr(const_cast<char*>(pPlayer->name.chars()), sptemp) == nullptr)
 					continue;
 			}
 
@@ -2298,7 +2303,7 @@ static cell AMX_NATIVE_CALL find_player(AMX *amx, cell *params) /* 1 param */
 	if (flags & 2048)
 		func = utf8strcasecmp;
 	else
-		func = strcmp;
+		func = cstrcmp;
 
 	int i;
 	CPlayer* pPlayer;
@@ -2326,7 +2331,7 @@ static cell AMX_NATIVE_CALL find_player(AMX *amx, cell *params) /* 1 param */
 					if (utf8stristr(pPlayer->name.chars(), sptemp) == nullptr)
 						continue;
 				}
-				else if (strstr(pPlayer->name.chars(), sptemp) == nullptr)
+				else if (cstrstr(const_cast<char*>(pPlayer->name.chars()), sptemp) == nullptr)
 					continue;
 			}
 
@@ -2345,7 +2350,7 @@ static cell AMX_NATIVE_CALL find_player(AMX *amx, cell *params) /* 1 param */
 
 			if (flags & 8)
 			{
-				if (strncmp(pPlayer->ip.chars(), sptemp, ilen))
+				if (cstrncmp(pPlayer->ip.chars(), sptemp, ilen))
 					continue;
 			}
 
@@ -2406,7 +2411,7 @@ static cell AMX_NATIVE_CALL get_localinfo(AMX *amx, cell *params) /* 3 param */
 	int ilen;
 	char* sptemp = get_amxstring(amx, params[1], 0, ilen);
 	char *value = LOCALINFO(sptemp);
-	return set_amxstring_utf8(amx, params[2], value, strlen(value), params[3]);
+	return set_amxstring_utf8(amx, params[2], value, cstrlen(value), params[3]);
 }
 
 static cell AMX_NATIVE_CALL set_localinfo(AMX *amx, cell *params) /* 2 param */
@@ -2474,7 +2479,7 @@ static cell AMX_NATIVE_CALL read_argv(AMX *amx, cell *params) /* 3 param */
 {
 	const int argc = params[1];
 	const char *value = g_fakecmd.notify ? ((argc >= 0 && argc < 3 && g_fakecmd.argv[argc] != nullptr) ? g_fakecmd.argv[argc] : "") : CMD_ARGV(argc);
-	return set_amxstring_utf8(amx, params[2], value, strlen(value), params[3]);
+	return set_amxstring_utf8(amx, params[2], value, cstrlen(value), params[3]);
 }
 
 static cell AMX_NATIVE_CALL read_argv_int(AMX *amx, cell *params) /* 1 param */
@@ -2484,7 +2489,7 @@ static cell AMX_NATIVE_CALL read_argv_int(AMX *amx, cell *params) /* 1 param */
 		return 0;
 
 	const char *value = g_fakecmd.notify ? ((argc >= 1 && argc < 3 && g_fakecmd.argv[argc] != nullptr) ? g_fakecmd.argv[argc] : "") : CMD_ARGV(argc);
-	return atoi(value);
+	return catoi(value);
 }
 
 static cell AMX_NATIVE_CALL read_argv_float(AMX *amx, cell *params) /* 1 param */
@@ -2494,14 +2499,14 @@ static cell AMX_NATIVE_CALL read_argv_float(AMX *amx, cell *params) /* 1 param *
 		return 0;
 
 	const char *value = g_fakecmd.notify ? ((argc >= 1 && argc < 3 && g_fakecmd.argv[argc] != nullptr) ? g_fakecmd.argv[argc] : "") : CMD_ARGV(argc);
-	const float flValue = atof(value);
+	const float flValue = catof(value);
 	return amx_ftoc(flValue);
 }
 
 static cell AMX_NATIVE_CALL read_args(AMX *amx, cell *params) /* 2 param */
 {
 	const char* sValue = g_fakecmd.notify ? (g_fakecmd.argc > 1 ? g_fakecmd.args : "") : CMD_ARGS();
-	return set_amxstring_utf8(amx, params[1], sValue ? sValue : "", sValue ? strlen(sValue) : 0, params[2]);
+	return set_amxstring_utf8(amx, params[1], sValue ? sValue : "", sValue ? cstrlen(sValue) : 0, params[2]);
 }
 
 static cell AMX_NATIVE_CALL get_user_msgid(AMX *amx, cell *params) /* 1 param */
@@ -2524,7 +2529,7 @@ static cell AMX_NATIVE_CALL get_user_msgname(AMX *amx, cell *params) /* get_user
 static cell AMX_NATIVE_CALL set_task(AMX *amx, cell *params) /* 2 param */
 {
 	CPluginMngr::CPlugin *plugin = g_plugins.findPluginFast(amx);
-	if (plugin == nullptr)
+	if (!plugin)
 		return 0;
 
 	int a, iFunc;
@@ -2695,7 +2700,7 @@ static cell AMX_NATIVE_CALL pause(AMX *amx, cell *params) /* 3 param */
 	else
 		plugin = g_plugins.findPluginFast(amx);
 
-	if (plugin != nullptr && plugin->isValid())
+	if (plugin && plugin->isValid())
 	{
 		if (flags & 8)
 			plugin->setStatus(ps_stopped);
@@ -2730,7 +2735,7 @@ static cell AMX_NATIVE_CALL unpause(AMX *amx, cell *params) /* 3 param */
 	else
 		plugin = g_plugins.findPluginFast(amx);
 
-	if (plugin != nullptr && plugin->isValid() && plugin->isPaused() && !plugin->isStopped())
+	if (plugin && plugin->isValid() && plugin->isPaused() && !plugin->isStopped())
 	{
 		plugin->unpausePlugin();
 		return 1;
@@ -2909,13 +2914,13 @@ static cell AMX_NATIVE_CALL random_float(AMX *amx, cell *params) /* 2 param */
 {
 	const float one = amx_ctof(params[1]);
 	const float two = amx_ctof(params[2]);
-	const float fRnd = RANDOM_FLOAT(one, two);
+	const float fRnd = crandomfloat(one, two);
 	return amx_ftoc(fRnd);
 }
 
 static cell AMX_NATIVE_CALL random_num(AMX *amx, cell *params) /* 2 param */
 {
-	return RANDOM_LONG(params[1], params[2]);
+	return crandomint(params[1], params[2]);
 }
 
 static cell AMX_NATIVE_CALL remove_quotes(AMX *amx, cell *params) /* 1 param */
@@ -3018,7 +3023,7 @@ static cell AMX_NATIVE_CALL force_unmodified(AMX *amx, cell *params)
 static cell AMX_NATIVE_CALL read_logdata(AMX *amx, cell *params)
 {
 	const char *value = g_logevents.getLogString();
-	return set_amxstring_utf8(amx, params[1], value, strlen(value), params[2]);
+	return set_amxstring_utf8(amx, params[1], value, cstrlen(value), params[2]);
 }
 
 static cell AMX_NATIVE_CALL read_logargc(AMX *amx, cell *params)
@@ -3029,7 +3034,7 @@ static cell AMX_NATIVE_CALL read_logargc(AMX *amx, cell *params)
 static cell AMX_NATIVE_CALL read_logargv(AMX *amx, cell *params)
 {
 	const char *value = g_logevents.getLogArg(params[1]);
-	return set_amxstring_utf8(amx, params[2], value, strlen(value), params[3]);
+	return set_amxstring_utf8(amx, params[2], value, cstrlen(value), params[3]);
 }
 
 static cell AMX_NATIVE_CALL parse_loguser(AMX *amx, cell *params)
@@ -3097,7 +3102,7 @@ static cell AMX_NATIVE_CALL parse_loguser(AMX *amx, cell *params)
 
 	// print_srvconsole("Got userid: %s (Len %d)\n", end + 1, len);
 	if (*(cPtr = get_amxaddr(amx, params[4])) != -2)
-		*cPtr = atoi(end + 1);
+		*cPtr = catoi(end + 1);
 
 	/******** GET NAME **********/
 	*end = 0;
@@ -3117,7 +3122,7 @@ static cell AMX_NATIVE_CALL parse_loguser(AMX *amx, cell *params)
 static cell AMX_NATIVE_CALL register_logevent(AMX *amx, cell *params)
 {
 	auto plugin = g_plugins.findPluginFast(amx);
-	if (plugin == nullptr)
+	if (!plugin)
 		return 0;
 
 	int length;
@@ -3180,7 +3185,7 @@ static cell AMX_NATIVE_CALL is_module_loaded(AMX *amx, cell *params)
 	int id = 0;
 	for (auto module : g_modules)
 	{
-		if (!stricmp(module->getName(), name))
+		if (!cstricmp(module->getName(), name))
 			return id;
 
 		++id;
@@ -3207,7 +3212,7 @@ static cell AMX_NATIVE_CALL is_plugin_loaded(AMX *amx, cell *params)
 
 		for (; iter != end; ++iter)
 		{
-			if (stricmp((*iter).getTitle(), name) == 0)
+			if (cstricmp((*iter).getTitle(), name) == 0)
 				return id;
 
 			++id;
@@ -3222,7 +3227,7 @@ static cell AMX_NATIVE_CALL is_plugin_loaded(AMX *amx, cell *params)
 
 		for (; iter != end; ++iter)
 		{
-			if (strcmp((*iter).getName(), name) == 0)
+			if (cstrcmp((*iter).getName(), name) == 0)
 				return id;
 
 			++id;
@@ -3261,9 +3266,9 @@ static cell AMX_NATIVE_CALL get_module(AMX *amx, cell *params)
 		const char *author = info && info->author ? info->author : "unk";
 		const char *version = info && info->version ? info->version : "unk";
 
-		set_amxstring_utf8(amx, params[2], name, strlen(name), params[3]);
-		set_amxstring_utf8(amx, params[4], author, strlen(author), params[5]);
-		set_amxstring_utf8(amx, params[6], version, strlen(version), params[7]);
+		set_amxstring_utf8(amx, params[2], name, cstrlen(name), params[3]);
+		set_amxstring_utf8(amx, params[4], author, cstrlen(author), params[5]);
+		set_amxstring_utf8(amx, params[6], version, cstrlen(version), params[7]);
 
 		// compatibility problem possible
 		numParams = params[0] / sizeof(cell);
@@ -3283,6 +3288,7 @@ static cell AMX_NATIVE_CALL get_module(AMX *amx, cell *params)
 		*addr = (cell)module->getStatusValue();
 		return params[1];
 	}
+
 	return -1;
 }
 
@@ -3290,7 +3296,7 @@ static cell AMX_NATIVE_CALL get_module(AMX *amx, cell *params)
 static cell AMX_NATIVE_CALL log_amx(AMX *amx, cell *params)
 {
 	CPluginMngr::CPlugin* plugin = g_plugins.findPluginFast(amx);
-	if (plugin == nullptr)
+	if (!plugin)
 		return 0;
 
 	int len;
@@ -3327,7 +3333,7 @@ int g_CallFunc_CurParam = 0;										// Current param id
 static cell AMX_NATIVE_CALL callfunc_begin(AMX *amx, cell *params)
 {
 	CPluginMngr::CPlugin* curPlugin = g_plugins.findPluginFast(amx);
-	if (curPlugin == nullptr)
+	if (!curPlugin)
 		return 0;
 
 	if (g_CallFunc_Plugin)
@@ -3347,7 +3353,7 @@ static cell AMX_NATIVE_CALL callfunc_begin(AMX *amx, cell *params)
 	else
 		plugin = g_plugins.findPlugin(pluginStr);
 
-	if (plugin == nullptr)
+	if (!plugin)
 		return -1; // plugin not found: -1
 
 	int func;
@@ -3371,7 +3377,7 @@ static cell AMX_NATIVE_CALL callfunc_begin_i(AMX *amx, cell *params)
 	else
 		plugin = g_plugins.findPlugin(params[2]);
 
-	if (plugin == nullptr)
+	if (!plugin)
 		return -1;
 
 	if (g_CallFunc_Plugin)
@@ -3406,7 +3412,7 @@ static cell AMX_NATIVE_CALL get_func_id(AMX *amx, cell *params)
 	else
 		plugin = g_plugins.findPlugin(params[2]);
 
-	if (plugin == nullptr)
+	if (!plugin)
 		return -1;
 
 	if (!plugin->isValid())
@@ -3425,7 +3431,7 @@ static cell AMX_NATIVE_CALL get_func_id(AMX *amx, cell *params)
 static cell AMX_NATIVE_CALL callfunc_end(AMX *amx, cell *params)
 {
 	CPluginMngr::CPlugin* curPlugin = g_plugins.findPluginFast(amx);
-	if (curPlugin == nullptr)
+	if (!curPlugin)
 		return 0;
 
 	if (!g_CallFunc_Plugin)
@@ -3436,11 +3442,11 @@ static cell AMX_NATIVE_CALL callfunc_end(AMX *amx, cell *params)
 	}
 
 	CPluginMngr::CPlugin* plugin = g_CallFunc_Plugin;
-	if (plugin == nullptr)
+	if (!plugin)
 		return 0;
 
 	AMX* pAmx = plugin->getAMX();
-	if (pAmx == nullptr)
+	if (!pAmx)
 		return 0;
 
 	// call the func
@@ -3453,16 +3459,19 @@ static cell AMX_NATIVE_CALL callfunc_end(AMX *amx, cell *params)
 	const int func = g_CallFunc_Func;
 	int curParam = g_CallFunc_CurParam;
 
-	memcpy(gparams, g_CallFunc_Params, sizeof(cell) * curParam);
-	memcpy(gparamInfo, g_CallFunc_ParamInfo, sizeof(CallFunc_ParamInfo) * curParam);
+	cmemcpy(gparams, g_CallFunc_Params, sizeof(cell) * curParam);
+	cmemcpy(gparamInfo, g_CallFunc_ParamInfo, sizeof(CallFunc_ParamInfo) * curParam);
 
 	// cleanup
 	g_CallFunc_Plugin = nullptr;
 	g_CallFunc_CurParam = 0;
 
 	Debugger *pDebugger = (Debugger*)pAmx->userdata[UD_DEBUGGER];
-	if (pDebugger != nullptr)
+	if (pDebugger)
 		pDebugger->BeginExec();
+
+	cell amx_addr;
+	cell* phys_addr;
 
 	// first pass over byref things
 	int i;
@@ -3470,9 +3479,8 @@ static cell AMX_NATIVE_CALL callfunc_end(AMX *amx, cell *params)
 	{
 		if (gparamInfo[i].flags & CALLFUNC_FLAG_BYREF)
 		{
-			cell amx_addr, *phys_addr;
 			amx_Allot(pAmx, gparamInfo[i].size, &amx_addr, &phys_addr);
-			memcpy(phys_addr, gparamInfo[i].alloc, gparamInfo[i].size * sizeof(cell));
+			cmemcpy(phys_addr, gparamInfo[i].alloc, gparamInfo[i].size * sizeof(cell));
 			gparams[i] = amx_addr;
 			delete[] gparamInfo[i].alloc;
 			gparamInfo[i].alloc = nullptr;
@@ -3494,12 +3502,17 @@ static cell AMX_NATIVE_CALL callfunc_end(AMX *amx, cell *params)
 	err = amx_ExecPerf(pAmx, &retVal, func);
 	if (err != AMX_ERR_NONE)
 	{
-		if (pDebugger == nullptr || !pDebugger->ErrorExists())
+		if (!pDebugger || !pDebugger->ErrorExists())
 			LogError(amx, err, nullptr);
 	}
 
-	if (pDebugger != nullptr)
+	if (pDebugger)
 		pDebugger->EndExec();
+
+	AMX* amxCalled;
+	AMX* amxCaller;
+	AMX_HEADER* hdrCaller;
+	AMX_HEADER* hdrCalled;
 
 	// process byref params (not byref_reused)
 	for (i = 0; i < curParam; ++i)
@@ -3507,13 +3520,13 @@ static cell AMX_NATIVE_CALL callfunc_end(AMX *amx, cell *params)
 		if (gparamInfo[i].flags & CALLFUNC_FLAG_BYREF)
 		{
 			// copy back so that references work
-			AMX *amxCalled = plugin->getAMX();
+			amxCalled = plugin->getAMX();
 			if (gparamInfo[i].copyback)
 			{
-				AMX *amxCaller = curPlugin->getAMX();
-				AMX_HEADER *hdrCaller = (AMX_HEADER*)amxCaller->base;
-				AMX_HEADER *hdrCalled = (AMX_HEADER*)amxCalled->base;
-					memcpy(	/** DEST ADDR **/
+				amxCaller = curPlugin->getAMX();
+				hdrCaller = (AMX_HEADER*)amxCaller->base;
+				hdrCalled = (AMX_HEADER*)amxCalled->base;
+					cmemcpy(	/** DEST ADDR **/
 					(amxCaller->data ? amxCaller->data : (amxCaller->base + hdrCaller->dat)) + gparamInfo[i].byrefAddr,
 					/** SOURCE ADDR **/
 					(amxCalled->data ? amxCalled->data : (amxCalled->base + hdrCalled->dat)) + gparams[i],
@@ -3556,7 +3569,7 @@ static cell AMX_NATIVE_CALL callfunc_push_byval(AMX *amx, cell *params)
 static cell AMX_NATIVE_CALL callfunc_push_byref(AMX *amx, cell *params)
 {
 	CPluginMngr::CPlugin *curPlugin = g_plugins.findPluginFast(amx);
-	if (curPlugin == nullptr)
+	if (!curPlugin)
 		return 0;
 
 	if (!g_CallFunc_Plugin)
@@ -3590,7 +3603,7 @@ static cell AMX_NATIVE_CALL callfunc_push_byref(AMX *amx, cell *params)
 	}
 
 	cell *phys_addr = new(std::nothrow) cell[1];
-	if (phys_addr == nullptr)
+	if (!phys_addr)
 	{
 		LogError(amx, AMX_ERR_MEMORY, "LOW/DAMAGED MEMORY!\nRUN MEMTEST ON THIS PC TO SEE IF MEMORY ISN'T DAMAGED!");
 		return 0;
@@ -3657,7 +3670,7 @@ static cell AMX_NATIVE_CALL callfunc_push_array(AMX *amx, cell *params)
 
 	// get the string and its length
 	cell* pArray = get_amxaddr(amx, params[1]);
-	memcpy(phys_addr, pArray, array_size * sizeof(cell));
+	cmemcpy(phys_addr, pArray, array_size * sizeof(cell));
 
 	// push the address and set the reference flag so that memory is released after function call.
 	g_CallFunc_ParamInfo[g_CallFunc_CurParam].flags = CALLFUNC_FLAG_BYREF;
@@ -3813,9 +3826,9 @@ static cell AMX_NATIVE_CALL find_plugin_byfile(AMX *amx, cell *params)
 	STRCOMPARE func;
 
 	if (params[2])
-		func = strcasecmp;
+		func = cstricmp;
 	else
-		func = strcmp;
+		func = cstrcmp;
 
 	int len, i = 0;
 	char *file = get_amxstring(amx, params[1], 0, len);
@@ -3854,7 +3867,7 @@ static cell AMX_NATIVE_CALL amx_abort(AMX *amx, cell *params)
 {
 	int len;
 	char *fmt = format_amxstring(amx, params, 2, len);
-	if (fmt != nullptr && fmt[0] == '\0')
+	if (fmt && fmt[0] == '\0')
 		fmt = nullptr;
 
 	CPluginMngr::CPlugin *pPlugin = g_plugins.findPluginFast(amx);
@@ -3863,7 +3876,7 @@ static cell AMX_NATIVE_CALL amx_abort(AMX *amx, cell *params)
 	if (g_CallFunc_Plugin == pPlugin)
 		g_CallFunc_Plugin = nullptr;
 
-	if (fmt != nullptr && pPlugin != nullptr)
+	if (fmt && pPlugin)
 		LogError(amx, params[1], "[%s] %s", pPlugin->getName(), fmt);
 	else
 		LogError(amx, params[1], nullptr);
@@ -3891,7 +3904,7 @@ static cell AMX_NATIVE_CALL LibraryExists(AMX *amx, cell *params)
 static cell AMX_NATIVE_CALL set_fail_state(AMX *amx, cell *params)
 {
 	CPluginMngr::CPlugin* pPlugin = g_plugins.findPluginFast(amx);
-	if (pPlugin == nullptr)
+	if (!pPlugin)
 		return 0;
 
 	int len;
@@ -4036,7 +4049,7 @@ static cell AMX_NATIVE_CALL ExecuteForward(AMX *amx, cell *params)
 				return 0;
 			}
 
-			strcpy((char*)allots[i-3].phys_addr, message);
+			cstrcpy((char*)allots[i-3].phys_addr, message);
 			ps[i - 3] = (cell)allots[i-3].phys_addr;
 		}
 		else if (param_type == FP_CELL_BYREF)
@@ -4076,7 +4089,7 @@ static cell AMX_NATIVE_CALL CreateHudSyncObj(AMX *amx, cell *params)
 		return g_hudsync.length();
 	}
 
-	memset(p, 0, sizeof(cell) * (gpGlobals->maxClients + 1));
+	cmemset(p, 0, sizeof(cell) * (gpGlobals->maxClients + 1));
 	g_hudsync.append(p);
 	return g_hudsync.length();
 }
@@ -4219,7 +4232,7 @@ static cell AMX_NATIVE_CALL arrayset(AMX *amx, cell *params)
 {
 	const cell value = params[2];
 	if (!value)
-		memset(get_amxaddr(amx, params[1]), 0, params[3] * sizeof(cell));
+		cmemset(get_amxaddr(amx, params[1]), 0, params[3] * sizeof(cell));
 	else
 	{
 		int i;
@@ -4406,7 +4419,7 @@ static cell AMX_NATIVE_CALL has_map_ent_class(AMX *amx, cell *params)
 static cell AMX_NATIVE_CALL AutoExecConfig(AMX *amx, cell *params)
 {
 	CPluginMngr::CPlugin* plugin = g_plugins.findPluginFast(amx);
-	if (plugin == nullptr)
+	if (!plugin)
 		return 0;
 
 	int length;
@@ -4417,7 +4430,7 @@ static cell AMX_NATIVE_CALL AutoExecConfig(AMX *amx, cell *params)
 		strncopy(pluginName, plugin->getName(), sizeof(pluginName));
 
 		char *ptr;
-		if ((ptr = strstr(pluginName, ".amxx")))
+		if ((ptr = cstrstr(pluginName, ".amxx")))
 			*ptr = '\0';
 
 		char newName[PLATFORM_MAX_PATH];

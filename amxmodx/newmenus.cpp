@@ -96,6 +96,9 @@ m_NeverExit(false), m_ForceExit(false), m_AutoColors(g_coloredmenus), thisId(0),
 isDestroying(false), pageCallback(-1), showPageNumber(true), useMultilingual(use_ml), amx(amx), items_per_page(7)
 {
 	CPluginMngr::CPlugin *pPlugin = g_plugins.findPluginFast(amx);
+	if (!pPlugin)
+		return;
+
 	menuId = g_menucmds.registerMenuId(title, amx);
 
 	if (strcmp(pPlugin->getName(), "war3ft.amxx") == 0)

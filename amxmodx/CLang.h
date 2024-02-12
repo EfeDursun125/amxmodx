@@ -142,28 +142,28 @@ public:
 	int GetKeyEntry(ke::AString &key);
 	int GetKeyEntry(const char *key);
 	// Get key from index
-	const char *GetKey(int key);
+	const char *GetKey(const int key);
 	// Add key
 	int AddKeyEntry(ke::AString &key);
 	int AddKeyEntry(const char *key);
 
 	// Get the number of languages
-	int GetLangsNum();
+	int GetLangsNum(void);
 	// Get the name of a language
-	const char *GetLangName(int langId);
+	const char *GetLangName(const size_t langId);
 	// Check if a language exists
 	bool LangExists(const char *langName);
 
 	// When a language id in a format string in FormatAmxString is LANG_PLAYER, the glob id decides which language to take.
-	void SetDefLang(int id);
+	void SetDefLang(const int id);
 
-	inline int GetDefLang() const { return m_CurGlobId; }
+	inline int GetDefLang(void) const { return m_CurGlobId; }
 
 	// Reset
-	void Clear();
+	void Clear(void);
 
-	CLangMngr();
-	~CLangMngr();
+	CLangMngr(void);
+	~CLangMngr(void);
 };
 
 #endif //_INCLUDE_CLANG_H

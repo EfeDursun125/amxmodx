@@ -13,18 +13,17 @@
 // *****************************************************
 // class MenuMngr
 // *****************************************************
-MenuMngr::MenuCommand::MenuCommand(CPluginMngr::CPlugin *a, int mi, int k, int f, bool new_menu)
+MenuMngr::MenuCommand::MenuCommand(CPluginMngr::CPlugin *a, const int mi, const int k, const int f, const bool new_menu)
 {
 	plugin = a;
 	keys = k;
 	menuid = mi;
 	next = 0;
 	is_new_menu = new_menu;
-
 	function = f;
 }
 
-MenuMngr::~MenuMngr() 
+MenuMngr::~MenuMngr(void) 
 {
 	clear();
 	MenuMngr::MenuIdEle::uniqueid = 0;
@@ -32,9 +31,10 @@ MenuMngr::~MenuMngr()
 
 int MenuMngr::findMenuId(const char* name, AMX* amx)
 {
-	for (MenuIdEle* b = headid; b; b = b->next)
+	MenuIdEle* b;
+	for (b = headid; b; b = b->next)
 	{
-		if ((!amx || !b->amx || amx == b->amx) && strstr(name,b->name.chars()))
+		if ((!amx || !b->amx || amx == b->amx) && strstr(name, b->name.chars()))
 			return b->id;
 	}
 	
@@ -43,19 +43,20 @@ int MenuMngr::findMenuId(const char* name, AMX* amx)
 
 int MenuMngr::registerMenuId(const char* n, AMX* a)
 {
-	int id = findMenuId(n, a);
-	
+	const int id = findMenuId(n, a);
 	if (id)
-	{
 		return id;
-	}
 	
-	headid = new MenuIdEle(n, a, headid);
-	
+	MenuIdEle* pointer = new(std::nothrow) MenuIdEle(n, a, headid);
+	if (pointer == nullptr)
+		return 0;
+
+	headid = pointer;
+	pointer = nullptr;
 	return headid->id;
 }
 
-void MenuMngr::registerMenuCmd(CPluginMngr::CPlugin *a, int mi, int k, int f, bool from_new_menu) 
+void MenuMngr::registerMenuCmd(CPluginMngr::CPlugin *a, const int mi, const int k, const int f, const bool from_new_menu)
 {
 	MenuCommand **temp = &headcmd;
 	if (from_new_menu)
@@ -64,49 +65,52 @@ void MenuMngr::registerMenuCmd(CPluginMngr::CPlugin *a, int mi, int k, int f, bo
 		while (*temp)
 		{
 			ptr = *temp;
-			if (ptr->is_new_menu
-				&& ptr->plugin == a
-				&& ptr->menuid == mi)
+			if (ptr->is_new_menu && ptr->plugin == a && ptr->menuid == mi)
 			{
 				if (g_forwards.isSameSPForward(ptr->function, f))
-				{
 					return;
-				}
 			}
-			temp = &(*temp)->next;
-		}
-	} else {
-		while (*temp)
-		{
+
 			temp = &(*temp)->next;
 		}
 	}
-	*temp = new MenuCommand(a, mi, k, f, from_new_menu);
+	else
+	{
+		while (*temp)
+			temp = &(*temp)->next;
+	}
+
+	MenuCommand* pointer = new(std::nothrow) MenuCommand(a, mi, k, f, from_new_menu);
+	if (pointer == nullptr)
+		return;
+
+	*temp = pointer;
+	pointer = nullptr;
 }
 
-void MenuMngr::clear()
+void MenuMngr::clear(void)
 {
-	while (headid)
+	MenuIdEle* a;
+	while (headid != nullptr)
 	{
-		MenuIdEle* a = headid->next;
+		a = headid->next;
 		delete headid;
 		headid = a;
 	}
 
-	while (headcmd)
+	MenuCommand* b;
+	while (headcmd != nullptr)
 	{
-		MenuCommand* a = headcmd->next;
+		b = headcmd->next;
 		delete headcmd;
-		headcmd = a;
+		headcmd = b;
 	}
 }
 
 MenuMngr::iterator MenuMngr::SetWatchIter(MenuMngr::iterator iter)
 {
 	MenuMngr::iterator old = m_watch_iter;
-
 	m_watch_iter = iter;
-
 	return old;
 }
 

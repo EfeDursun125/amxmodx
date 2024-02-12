@@ -9,6 +9,7 @@
 
 #include "amxmodx.h"
 #include "CEvent.h"
+#include <clib.h>
 
 // *****************************************************
 // class ClEvent
@@ -16,7 +17,7 @@
 
 NativeHandle<EventHook> EventHandles;
 
-EventsMngr::ClEvent::ClEvent(CPluginMngr::CPlugin* plugin, int func, int flags)
+EventsMngr::ClEvent::ClEvent(CPluginMngr::CPlugin* plugin, const int func, const int flags)
 {
 	m_Plugin = plugin;
 	m_Func = func;
@@ -25,14 +26,14 @@ EventsMngr::ClEvent::ClEvent(CPluginMngr::CPlugin* plugin, int func, int flags)
 	m_FlagAlive = true;
 	m_FlagDead = true;
 
-	m_FlagWorld = (flags & 1) ? true : false;			// flag a
-	m_FlagClient = (flags & 2) ? true : false;			// flag b
-	m_FlagOnce = (flags & 4) ? true : false;			// flag c
+	m_FlagWorld = (flags & 1) ? true : false; // flag a
+	m_FlagClient = (flags & 2) ? true : false; // flag b
+	m_FlagOnce = (flags & 4) ? true : false; // flag c
 	
 	if (flags & 24)
 	{
-		m_FlagAlive = (flags & 16) ? true : false;		// flag e
-		m_FlagDead = (flags & 8) ? true : false;		// flag d
+		m_FlagAlive = (flags & 16) ? true : false; // flag e
+		m_FlagDead = (flags & 8) ? true : false; // flag d
 	}
 
 	if (m_FlagClient)
@@ -42,22 +43,21 @@ EventsMngr::ClEvent::ClEvent(CPluginMngr::CPlugin* plugin, int func, int flags)
 
 		if (flags & 96)
 		{
-			m_FlagPlayer = (flags & 32) ? true : false;	 // flag f
-			m_FlagBot = (flags & 64) ? true : false;	 // flag g
+			m_FlagPlayer = (flags & 32) ? true : false; // flag f
+			m_FlagBot = (flags & 64) ? true : false; // flag g
 		}
 	}
 
 	m_Stamp = 0.0f;
 	m_Done = false;
 	m_State = FSTATE_ACTIVE;
-
-	m_Conditions = NULL;
+	m_Conditions = nullptr;
 }
 
-EventsMngr::ClEvent::~ClEvent()
+EventsMngr::ClEvent::~ClEvent(void)
 {
 	cond_t *tmp1 = m_Conditions;
-	cond_t *tmp2 = NULL;
+	cond_t *tmp2 = nullptr;
 	
 	while (tmp1)
 	{
@@ -66,33 +66,29 @@ EventsMngr::ClEvent::~ClEvent()
 		tmp1 = tmp2;
 	}
 	
-	m_Conditions = NULL;
+	m_Conditions = nullptr;
 }
 
-void EventsMngr::NextParam()
+void EventsMngr::NextParam(void)
 {
-	const int INITIAL_PARSEVAULT_SIZE = 32;
-
 	if (m_ParsePos < m_ParseVaultSize)
 		return;
 
-	MsgDataEntry *tmp = NULL;
+	constexpr int INITIAL_PARSEVAULT_SIZE = 32;
+	MsgDataEntry *tmp = nullptr;
 	int tmpSize = 0;
 	
 	if (m_ParseVault)
 	{
 		// copy to tmp
-		tmp = new MsgDataEntry[m_ParseVaultSize];
-		
+		tmp = new(std::nothrow) MsgDataEntry[m_ParseVaultSize];
 		if (!tmp)
-		{
-			return;		// :TODO: Error report !!
-		}
+			return;	// :TODO: Error report !!
 		
-		memcpy(tmp, m_ParseVault, m_ParseVaultSize * sizeof(MsgDataEntry));
+		cmemcpy(tmp, m_ParseVault, m_ParseVaultSize * sizeof(MsgDataEntry));
 		tmpSize = m_ParseVaultSize;
-		delete [] m_ParseVault;
-		m_ParseVault = NULL;
+		delete[] m_ParseVault;
+		m_ParseVault = nullptr;
 	}
 
 	if (m_ParseVaultSize > 0)
@@ -100,39 +96,44 @@ void EventsMngr::NextParam()
 	else
 		m_ParseVaultSize = INITIAL_PARSEVAULT_SIZE;
 
-	m_ParseVault = new MsgDataEntry[m_ParseVaultSize];
+	MsgDataEntry* pointer = new(std::nothrow) MsgDataEntry[m_ParseVaultSize];
+	if (!pointer)
+		return;
+
+	m_ParseVault = pointer;
+	pointer = nullptr;
 	
 	if (tmp)
 	{
-		memcpy(m_ParseVault, tmp, tmpSize * sizeof(MsgDataEntry));
-		delete [] tmp;
-		tmp = NULL;
+		cmemcpy(m_ParseVault, tmp, tmpSize * sizeof(MsgDataEntry));
+		delete[] tmp;
+		tmp = nullptr;
 	}
 }
 
-int EventsMngr::ClEvent::getFunction()
+int EventsMngr::ClEvent::getFunction(void)
 {
 	return m_Func;
 }
 
-EventsMngr::EventsMngr()
+EventsMngr::EventsMngr(void)
 {
-	m_ParseVault = NULL;
+	m_ParseVault = nullptr;
 	m_ParseVaultSize = 0;
 	m_ParseMsgType = -1;
-	m_ReadVault = NULL;
+	m_ReadVault = nullptr;
 	m_ReadVaultSize = 0;
 	m_ReadPos = -1;
 	m_ReadMsgType = -1;
 	clearEvents();
 }
 
-EventsMngr::~EventsMngr()
+EventsMngr::~EventsMngr(void)
 {
 	clearEvents();
 }
 
-CPluginMngr::CPlugin * EventsMngr::ClEvent::getPlugin()
+CPluginMngr::CPlugin * EventsMngr::ClEvent::getPlugin(void)
 {
 	return m_Plugin;
 }
@@ -160,7 +161,7 @@ void EventsMngr::ClEvent::registerFilter(char *filter)
 	if (!*value)
 		return;
 
-	cond_t *tmpCond = new cond_t;
+	cond_t *tmpCond = new(std::nothrow) cond_t;
 	if (!tmpCond)
 		return;
 
@@ -169,19 +170,17 @@ void EventsMngr::ClEvent::registerFilter(char *filter)
 
 	// set a null here so param id can be recognized, and save it
 	*value++ = 0;
-	tmpCond->paramId = atoi(filter);
+	tmpCond->paramId = catoi(filter);
 
 	// rest of line
 	tmpCond->sValue = value;
-	tmpCond->fValue = static_cast<float>(atof(value));
-	tmpCond->iValue = atoi(value);
-	
-	tmpCond->next = NULL;
+	tmpCond->fValue = catof(value);
+	tmpCond->iValue = catoi(value);
+	tmpCond->next = nullptr;
 
 	if (m_Conditions)
 	{
 		cond_t *tmp = m_Conditions;
-		
 		while (tmp->next)
 			tmp = tmp->next;
 		
@@ -191,34 +190,29 @@ void EventsMngr::ClEvent::registerFilter(char *filter)
 		m_Conditions = tmpCond;
 }
 
-void EventsMngr::ClEvent::setForwardState(ForwardState state)
+void EventsMngr::ClEvent::setForwardState(const ForwardState state)
 {
 	m_State = state;
 }
 
-
-int EventsMngr::registerEvent(CPluginMngr::CPlugin* plugin, int func, int flags, int msgid)
+int EventsMngr::registerEvent(CPluginMngr::CPlugin* plugin, const int func, const int flags, const int msgid)
 {
 	if (msgid < 0 || msgid >= MAX_AMX_REG_MSG)
-	{
 		return 0;
-	}
 
-	auto event = ke::AutoPtr<ClEvent>(new ClEvent(plugin, func, flags));
+	auto event = ke::AutoPtr<ClEvent>(new(std::nothrow) ClEvent(plugin, func, flags));
+	if (!event)
+		return 0;
 
-	int handle = EventHandles.create(event.get());
-	
+	const int handle = EventHandles.create(event.get());
 	if (!handle)
-	{
 		return 0;
-	}
 
 	m_Events[msgid].append(ke::Move(event));
-
 	return handle;
 }
 
-void EventsMngr::parserInit(int msg_type, float* timer, CPlayer* pPlayer, int index)
+void EventsMngr::parserInit(const int msg_type, float* timer, CPlayer* pPlayer, const int index)
 {
 	if (msg_type < 0 || msg_type > MAX_AMX_REG_MSG)
 		return;
@@ -277,7 +271,7 @@ void EventsMngr::parserInit(int msg_type, float* timer, CPlayer* pPlayer, int in
 	m_ParseFun = &m_Events[msg_type];
 }
 
-void EventsMngr::parseValue(int iValue)
+void EventsMngr::parseValue(const int iValue)
 {
 	// not parsing
 	if (!m_ParseNotDone || !m_ParseFun)
@@ -290,16 +284,19 @@ void EventsMngr::parseValue(int iValue)
 	m_ParseVault[m_ParsePos].type = MSG_INTEGER;
 	m_ParseVault[m_ParsePos].iValue = iValue;
 
+	bool execute;
+	bool anyConditions;
+
 	// loop through the registered funcs, and decide whether they have to be called or not
 	// if they shouldnt, their m_Done is set to true
 	for (auto &event : *m_ParseFun)
 	{
 		if (event->m_Done)
-			continue;		// already skipped; don't bother with parsing
+			continue; // already skipped; don't bother with parsing
 
 		// loop through conditions
-		bool execute = false;
-		bool anyConditions = false;
+		execute = false;
+		anyConditions = false;
 		
 		for (auto condIter = event->m_Conditions; condIter; condIter = condIter->next)
 		{
@@ -320,11 +317,11 @@ void EventsMngr::parseValue(int iValue)
 		}
 		
 		if (anyConditions && !execute)
-			event->m_Done = true;		// don't execute
+			event->m_Done = true; // don't execute
 	}
 }
 
-void EventsMngr::parseValue(float fValue)
+void EventsMngr::parseValue(const float fValue)
 {
 	// not parsing
 	if (!m_ParseNotDone || !m_ParseFun)
@@ -337,16 +334,19 @@ void EventsMngr::parseValue(float fValue)
 	m_ParseVault[m_ParsePos].type = MSG_FLOAT;
 	m_ParseVault[m_ParsePos].fValue = fValue;
 
+	bool execute;
+	bool anyConditions;
+
 	// loop through the registered funcs, and decide whether they have to be called or not
 	// if they shouldnt, their m_Done is set to true
 	for (auto &event : *m_ParseFun)
 	{
 		if (event->m_Done)
-			continue;		// already skipped; don't bother with parsing
+			continue; // already skipped; don't bother with parsing
 
 		// loop through conditions
-		bool execute = false;
-		bool anyConditions = false;
+		execute = false;
+		anyConditions = false;
 		
 		for (auto condIter = event->m_Conditions; condIter; condIter = condIter->next)
 		{
@@ -367,7 +367,7 @@ void EventsMngr::parseValue(float fValue)
 		}
 		
 		if (anyConditions && !execute)
-			event->m_Done = true;		// don't execute
+			event->m_Done = true; // don't execute
 	}
 }
 
@@ -384,16 +384,19 @@ void EventsMngr::parseValue(const char *sz)
 	m_ParseVault[m_ParsePos].type = MSG_STRING;
 	m_ParseVault[m_ParsePos].sValue = sz;
 
+	bool execute;
+	bool anyConditions;
+
 	// loop through the registered funcs, and decide whether they have to be called or not
 	// if they shouldnt, their m_Done is set to true
 	for (auto &event : *m_ParseFun)
 	{
 		if (event->m_Done)
-			continue;		// already skipped; don't bother with parsing
+			continue; // already skipped; don't bother with parsing
 
 		// loop through conditions
-		bool execute = false;
-		bool anyConditions = false;
+		execute = false;
+		anyConditions = false;
 		
 		for (auto condIter = event->m_Conditions; condIter; condIter = condIter->next)
 		{
@@ -402,8 +405,8 @@ void EventsMngr::parseValue(const char *sz)
 				anyConditions = true;
 				switch (condIter->type)
 				{
-					case '=': if (!strcmp(sz, condIter->sValue.chars())) execute = true; break;
-					case '!': if (strcmp(sz, condIter->sValue.chars())) execute = true; break;
+					case '=': if (!cstrcmp(sz, condIter->sValue.chars())) execute = true; break;
+					case '!': if (cstrcmp(sz, condIter->sValue.chars())) execute = true; break;
 					case '&': if (strstr(sz, condIter->sValue.chars())) execute = true; break;
 				}
 				
@@ -413,35 +416,43 @@ void EventsMngr::parseValue(const char *sz)
 		}
 		
 		if (anyConditions && !execute)
-			event->m_Done = true;		// don't execute
+			event->m_Done = true; // don't execute
 	}
 }
 
-void EventsMngr::executeEvents()
+void EventsMngr::executeEvents(void)
 {
 	static unsigned int reentrant = 0;
 	if (!m_ParseFun)
-	{
 		return;
-	}
 
-	// Store old read data, which are either default values or previous event data
+	// store old read data, which are either default values or previous event data
 	int oldMsgType = m_ReadMsgType, oldReadPos = m_ReadPos;
-	MsgDataEntry *oldReadVault = m_ReadVault, *readVault = NULL;
+	MsgDataEntry *oldReadVault = m_ReadVault, *readVault = nullptr;
 	
-	// We have a re-entrant call
+	// we have a re-entrant call
 	if (reentrant++)
 	{
-		// Create temporary read vault
-		readVault = new MsgDataEntry[m_ParsePos + 1];
+		// create temporary read vault
+		readVault = new(std::nothrow) MsgDataEntry[m_ParsePos + 1];
+		if (!readVault)
+			return;
+
 		m_ReadVault = readVault;
-	} else if (m_ReadVaultSize != m_ParseVaultSize) {
-		// Extend read vault size if necessary
-		delete [] m_ReadVault;
-		m_ReadVault = new MsgDataEntry[m_ParseVaultSize];
+	}
+	else if (m_ReadVaultSize != m_ParseVaultSize)
+	{
+		// extend read vault size if necessary
+		auto pointer = new(std::nothrow) MsgDataEntry[m_ParseVaultSize];
+		if (!pointer)
+			return;
+
+		delete[] m_ReadVault;
+		m_ReadVault = pointer;
+		pointer = nullptr;
 		m_ReadVaultSize = m_ParseVaultSize;
 		
-		// Update old read vault so we don't restore to a wrong pointer
+		// update old read vault so we don't restore to a wrong pointer
 		oldReadVault = m_ReadVault;
 	}
 
@@ -450,19 +461,17 @@ void EventsMngr::executeEvents()
 	m_ReadMsgType = m_ParseMsgType;
 
 	if (m_ParseVault)
-	{
-		memcpy(m_ReadVault, m_ParseVault, (m_ParsePos + 1) * sizeof(MsgDataEntry));
-	}
+		cmemcpy(m_ReadVault, m_ParseVault, (m_ParsePos + 1) * sizeof(MsgDataEntry));
 
 	// Reset this here so we don't trigger re-entrancy for unregistered messages
 	auto parseFun = m_ParseFun;
 	m_ParseFun = nullptr;
 
-	auto lastSize = parseFun->length();
-	for(auto i = 0u; i < lastSize; i++)
+	size_t i;
+	size_t lastSize = parseFun->length();
+	for (i = 0; i < lastSize; i++)
 	{
 		auto &event = parseFun->at(i);
-
 		if (event->m_Done) 
 		{
 			event->m_Done = false;
@@ -470,49 +479,50 @@ void EventsMngr::executeEvents()
 		}
 		
 		event->m_Stamp = *m_Timer;
-
 		if (event->m_State == FSTATE_ACTIVE)
-		{
 			executeForwards(event->m_Func, static_cast<cell>(m_ReadVault ? m_ReadVault[0].iValue : 0));
-		}
 	}
 	
 	// Restore old read data, either resetting to default or to previous event data
 	m_ReadMsgType = oldMsgType;
 	m_ReadPos = oldReadPos;
 	m_ReadVault = oldReadVault;
-	
-	delete [] readVault;
-
+	delete[] readVault;
 	--reentrant;
 }
 
-int EventsMngr::getArgNum() const
+int EventsMngr::getArgNum(void) const
 {
 	return m_ReadPos + 1;
 }
 
-const char* EventsMngr::getArgString(int a) const
+const char* EventsMngr::getArgString(const int a) const
 {
 	if (a < 0 || a > m_ReadPos)
 		return "";
 
-	static char var[32];
+	char* var = static_cast<char*>(malloc(33));
+	if (!var)
+		return "";
 
 	switch (m_ReadVault[a].type)
 	{
 		case MSG_INTEGER: 
+		{
 			sprintf(var, "%d", m_ReadVault[a].iValue);
 			return var;
+		}
 		case MSG_STRING: 
 			return m_ReadVault[a].sValue;
 		default:
+		{
 			sprintf(var, "%g", m_ReadVault[a].fValue);
 			return var;
+		}
 	}
 }
 
-int EventsMngr::getArgInteger(int a) const
+int EventsMngr::getArgInteger(const int a) const
 {
 	if (a < 0 || a > m_ReadPos)
 		return 0;
@@ -522,13 +532,13 @@ int EventsMngr::getArgInteger(int a) const
 		case MSG_INTEGER:
 			return m_ReadVault[a].iValue;
 		case MSG_STRING:
-			return atoi(m_ReadVault[a].sValue);
+			return catoi(m_ReadVault[a].sValue);
 		default:
-			return (int)m_ReadVault[a].fValue; 
+			return static_cast<int>(m_ReadVault[a].fValue);
 	}
 }
 
-float EventsMngr::getArgFloat(int a) const
+float EventsMngr::getArgFloat(const int a) const
 {
 	if (a < 0 || a > m_ReadPos)
 		return 0.0f;
@@ -538,7 +548,7 @@ float EventsMngr::getArgFloat(int a) const
 		case MSG_INTEGER:
 			return static_cast<float>(m_ReadVault[a].iValue);
 		case MSG_STRING:
-			return static_cast<float>(atof(m_ReadVault[a].sValue));
+			return catof(m_ReadVault[a].sValue);
 		default:
 			return m_ReadVault[a].fValue; 
 	}
@@ -546,25 +556,24 @@ float EventsMngr::getArgFloat(int a) const
 
 void EventsMngr::clearEvents(void)
 {
-	for (int i = 0; i < MAX_AMX_REG_MSG; ++i)
-	{
+	int i;
+	for (i = 0; i < MAX_AMX_REG_MSG; ++i)
 		m_Events[i].clear();
-	}
 
 	EventHandles.clear();
 
 	// delete parsevault
 	if (m_ParseVault)
 	{
-		delete [] m_ParseVault;
-		m_ParseVault = NULL;
+		delete[] m_ParseVault;
+		m_ParseVault = nullptr;
 		m_ParseVaultSize = 0;
 	}
 
 	if (m_ReadVault)
 	{
-		delete [] m_ReadVault;
-		m_ReadVault = NULL;
+		delete[] m_ReadVault;
+		m_ReadVault = nullptr;
 		m_ReadVaultSize = 0;
 		m_ReadPos = -1;
 	}
@@ -587,21 +596,22 @@ int EventsMngr::getEventId(const char* msg)
 	};
 
 	// if msg is a number, return it
-	int pos = atoi(msg);
-	
+	int pos = catoi(msg);
 	if (pos != 0)
 		return pos;
 
 	// try to find in table first
 	for (pos = 0; table[pos].id != CS_Null; ++pos)
-		if (!strcmp(table[pos].name, msg))
+	{
+		if (!cstrcmp(table[pos].name, msg))
 			return table[pos].id;
+	}
 
 	// find the id of the message
 	return pos = GET_USER_MSG_ID(PLID, msg, 0);
 }
 
-int EventsMngr::getCurrentMsgType()
+int EventsMngr::getCurrentMsgType(void)
 {
 	return m_ReadMsgType;
 }

@@ -45,13 +45,13 @@ struct TableEntry
 		else \
 			m_Status = Err_FileRead; \
 		fclose(m_pFile); \
-		m_pFile = NULL; \
+		m_pFile = nullptr; \
 		return; \
 	}
 
-CAmxxReader::CAmxxReader(const char *filename, int cellsize)
+CAmxxReader::CAmxxReader(const char *filename, const int cellsize)
 {
-	m_Bh.plugins = NULL;
+	m_Bh.plugins = nullptr;
 	m_AmxxFile = false;
 	
 	if (!filename)
@@ -80,8 +80,7 @@ CAmxxReader::CAmxxReader(const char *filename, int cellsize)
 		//we have an invalid, old, RLEB file
 		m_Status = Err_OldFile;
 		fclose(m_pFile);
-		m_pFile = NULL;
-		
+		m_pFile = nullptr;
 		return;
 	}
 	else if (magic == MAGIC_HEADER2)
@@ -92,19 +91,29 @@ CAmxxReader::CAmxxReader(const char *filename, int cellsize)
 		{
 			m_Status = Err_OldFile;
 			fclose(m_pFile);
-			m_pFile = NULL;
-			
+			m_pFile = nullptr;
 			return;
 		}
 		
 		m_AmxxFile = true;
 		DATAREAD(&m_Bh.numPlugins, sizeof(mint8_t), 1);
-		m_Bh.plugins = new PluginEntry[m_Bh.numPlugins];
-		PluginEntry *pe;
+		PluginEntry* pointer = new(std::nothrow) PluginEntry[m_Bh.numPlugins];
+		if (pointer == nullptr)
+		{
+			m_Status = Err_Memory;
+			fclose(m_pFile);
+			m_pFile = nullptr;
+			return;
+		}
+
+		m_Bh.plugins = pointer;
+		pointer = nullptr;
+		PluginEntry* pe;
 		m_SectionHdrOffset = 0;
 		m_Entry = -1;
 		
-		for (mint8_t i = 0; i < m_Bh.numPlugins; i++)
+		mint8_t i;
+		for (i = 0; i < m_Bh.numPlugins; i++)
 		{
 			pe = &(m_Bh.plugins[(unsigned)i]);
 			DATAREAD(&pe->cellsize, sizeof(mint8_t), 1);
@@ -114,10 +123,9 @@ CAmxxReader::CAmxxReader(const char *filename, int cellsize)
 			DATAREAD(&pe->offs, sizeof(int32_t), 1);
 		}
 		
-		for (mint8_t i = 0; i < m_Bh.numPlugins; i++)
+		for (i = 0; i < m_Bh.numPlugins; i++)
 		{
 			pe = &(m_Bh.plugins[(unsigned)i]);
-			
 			if (pe->cellsize == m_CellSize)
 			{
 				m_Entry = i;
@@ -129,8 +137,7 @@ CAmxxReader::CAmxxReader(const char *filename, int cellsize)
 		{
 			m_Status = Err_SectionNotFound;
 			fclose(m_pFile);
-			m_pFile = NULL;
-			
+			m_pFile = nullptr;
 			return;
 		}
 		
@@ -162,7 +169,7 @@ CAmxxReader::CAmxxReader(const char *filename, int cellsize)
 		{
 			m_Status = Err_SectionNotFound;
 			fclose(m_pFile);
-			m_pFile = NULL;
+			m_pFile = nullptr;
 			return;
 		}
 
@@ -173,58 +180,60 @@ CAmxxReader::CAmxxReader(const char *filename, int cellsize)
 			TableEntry nextEntry;
 			DATAREAD(&nextEntry, sizeof(nextEntry), 1);
 			m_SectionLength = nextEntry.offset - entry.offset;
-		} else {
+		}
+		else
+		{
 			fseek(m_pFile, 0, SEEK_END);
 			m_SectionLength = ftell(m_pFile) - (long)entry.offset;
 		}
-	} else {
+	}
+	else
+	{
 		// check for old file
 		AMX_HEADER hdr;
 		rewind(m_pFile);
 		fread(&hdr, sizeof(hdr), 1, m_pFile);
 		amx_Align16(&hdr.magic);
-		
 		if (hdr.magic == AMX_MAGIC)
 		{
 			if (cellsize != 4)
 			{
 				m_Status = Err_SectionNotFound;
 				fclose(m_pFile);
-				m_pFile = NULL;
-				
+				m_pFile = nullptr;
 				return;
 			}
 
 			m_OldFile = true;
-			
 			return;
-		} else {
+		}
+		else
+		{
 			// no known file format
 			m_Status = Err_FileInvalid;
 			fclose(m_pFile);
-			m_pFile = NULL;
-			
+			m_pFile = nullptr;
 			return;
 		}
 	} 
 }
 
-CAmxxReader::~CAmxxReader()
+CAmxxReader::~CAmxxReader(void)
 {
-	if (m_pFile)
+	if (m_pFile != nullptr)
 	{
 		fclose(m_pFile);
-		m_pFile = NULL;
+		m_pFile = nullptr;
 	}
 	
-	if (m_Bh.plugins)
+	if (m_Bh.plugins != nullptr)
 	{
-		delete [] m_Bh.plugins;
-		m_Bh.plugins = NULL;
+		delete[] m_Bh.plugins;
+		m_Bh.plugins = nullptr;
 	}
 }
 
-CAmxxReader::Error CAmxxReader::GetStatus()
+CAmxxReader::Error CAmxxReader::GetStatus(void)
 {
 	return m_Status;
 }
@@ -238,30 +247,27 @@ CAmxxReader::Error CAmxxReader::GetStatus()
 		else \
 			m_Status = Err_FileRead; \
 		fclose(m_pFile); \
-		m_pFile = NULL; \
+		m_pFile = nullptr; \
 		return 0; \
 	}
 
-size_t CAmxxReader::GetBufferSize()
+size_t CAmxxReader::GetBufferSize(void)
 {
 	if (!m_pFile)
 		return 0;
 
-	long save = ftell(m_pFile);
-
+	const long save = ftell(m_pFile);
 	if (m_OldFile)
 	{
 		rewind(m_pFile);
 		AMX_HEADER hdr;
 		DATAREAD(&hdr, sizeof(hdr), 1);
 		fseek(m_pFile, save, SEEK_SET);
-		
 		return hdr.stp;
 	}
 	else if (m_AmxxFile)
 	{
 		PluginEntry *pe = &(m_Bh.plugins[m_Entry]);
-		
 		if (pe->imagesize > pe->memsize)
 			return pe->imagesize + 1;
 		
@@ -269,12 +275,10 @@ size_t CAmxxReader::GetBufferSize()
 	}
 
 	fseek(m_pFile, m_SectionHdrOffset, SEEK_SET);
-
 	TableEntry entry;
 	DATAREAD(&entry, sizeof(entry), 1);
 	fseek(m_pFile, save, SEEK_SET);
-	
-	return entry.origSize + 1;			// +1 : safe
+	return entry.origSize + 1; // +1 : safe
 }
 
 #undef DATAREAD
@@ -286,7 +290,7 @@ size_t CAmxxReader::GetBufferSize()
 		else \
 			m_Status = Err_FileRead; \
 		fclose(m_pFile); \
-		m_pFile = NULL; \
+		m_pFile = nullptr; \
 		return m_Status; \
 	}
 #define DATAREAD_RELEASE(addr, itemsize, itemcount) \
@@ -297,10 +301,11 @@ size_t CAmxxReader::GetBufferSize()
 		else \
 			m_Status = Err_FileRead; \
 		fclose(m_pFile); \
-		m_pFile = NULL; \
+		m_pFile = nullptr; \
 		delete[] tempBuffer;\
 		return m_Status; \
 	}
+
 CAmxxReader::Error CAmxxReader::GetSection(void *buffer)
 {
 	if (!m_pFile)
@@ -310,22 +315,28 @@ CAmxxReader::Error CAmxxReader::GetSection(void *buffer)
 	{
 		// get file size
 		fseek(m_pFile, 0, SEEK_END);
-		long filesize = ftell(m_pFile);
+		const long filesize = ftell(m_pFile);
 		rewind(m_pFile);
 		DATAREAD(buffer, 1, filesize);
 		m_Status = Err_None;
-		
 		return m_Status;
 	}
 	else if (m_AmxxFile)
 	{
+		char* tempBuffer = new(std::nothrow) char[m_SectionLength + 1];
+		if (tempBuffer == nullptr)
+		{
+			AMXXLOG_Log("[AMXX] Memory Error, Low/Damaged Memory");
+			m_Status = Err_Decompress;
+			return Err_Memory;
+		}
+
 		PluginEntry *pe = &(m_Bh.plugins[m_Entry]);
-		char *tempBuffer = new char[m_SectionLength + 1];
 		fseek(m_pFile, pe->offs, SEEK_SET);
-		DATAREAD_RELEASE((void *)tempBuffer, 1, m_SectionLength);
+		DATAREAD_RELEASE((void*)tempBuffer, 1, m_SectionLength);
 		uLongf destLen = GetBufferSize();
-		int result = uncompress((Bytef *)buffer, &destLen, (Bytef *)tempBuffer, m_SectionLength);
-		delete [] tempBuffer;
+		const int result = uncompress((Bytef*)buffer, &destLen, (Bytef*)tempBuffer, m_SectionLength);
+		delete[] tempBuffer;
 		
 		if (result != Z_OK)
 		{
@@ -335,7 +346,17 @@ CAmxxReader::Error CAmxxReader::GetSection(void *buffer)
 		}
 		
 		return Err_None;
-	} else {
+	}
+	else
+	{
+		char* tempBuffer = new(std::nothrow) char[m_SectionLength + 1];
+		if (tempBuffer == nullptr)
+		{
+			AMXXLOG_Log("[AMXX] Memory Error, Low/Damaged Memory");
+			m_Status = Err_Decompress;
+			return Err_Memory;
+		}
+
 		// new file type: go to the section table entry
 		fseek(m_pFile, m_SectionHdrOffset, SEEK_SET);
 		// go to the offset
@@ -343,19 +364,16 @@ CAmxxReader::Error CAmxxReader::GetSection(void *buffer)
 		DATAREAD(&entry, sizeof(entry), 1);
 		fseek(m_pFile, entry.offset, SEEK_SET);
 		uLongf destLen = GetBufferSize();
-		// read the data to a temporary buffer
-		char *tempBuffer = new char[m_SectionLength + 1];
 		//fread(tempBuffer, sizeof(char), m_SectionLength, m_pFile);
 		DATAREAD_RELEASE((void*)tempBuffer, 1, m_SectionLength);
 		// decompress
-		int result = uncompress((Bytef *)buffer, &destLen, (Bytef *)tempBuffer, m_SectionLength);
-		delete [] tempBuffer;
+		const int result = uncompress((Bytef*)buffer, &destLen, (Bytef*)tempBuffer, m_SectionLength);
+		delete[] tempBuffer;
 		
 		if (result != Z_OK)
 		{
 			AMXXLOG_Log("[AMXX] Zlib error encountered: %d(%d)", result, m_SectionLength);
 			m_Status = Err_Decompress;
-			
 			return Err_Decompress;
 		}
 		

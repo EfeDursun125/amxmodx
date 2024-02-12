@@ -438,11 +438,8 @@ static cell AMX_NATIVE_CALL ArrayGetStringHandle(AMX* amx, cell* params)
 	}
 
 	cell* ptr = vec->at(idx);
-
-	if (ptr == NULL)
-	{
+	if (!ptr)
 		return 0;
-	}
 
 	return reinterpret_cast<cell>(ptr);
 }

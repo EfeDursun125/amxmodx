@@ -9,11 +9,13 @@
 
 #include "amxmodx.h"
 #include "newmenus.h"
+#include <clib.h>
+
 // *****************************************************
 // class CPlayer
 // *****************************************************
 
-void CPlayer::Init(edict_t* e, int i)
+void CPlayer::Init(edict_t* e, const int i)
 {
 	index = i;
 	pEdict = e;
@@ -38,7 +40,7 @@ void CPlayer::Init(edict_t* e, int i)
 	team = nullptr;
 }
 
-void CPlayer::Disconnect()
+void CPlayer::Disconnect(void)
 {
 	ingame = false;
 	initialized = false;
@@ -49,36 +51,23 @@ void CPlayer::Disconnect()
 	if (Menu *pMenu = get_menu_by_id(newmenu))
 		pMenu->Close(index);
 
-	List<ClientCvarQuery_Info *>::iterator iter, end=queries.end();
-	for (iter=queries.begin(); iter!=end; iter++)
+	List<ClientCvarQuery_Info*>::iterator iter, end = queries.end();
+	for (iter = queries.begin(); iter != end; iter++)
 	{
 		unregisterSPForward((*iter)->resultFwd);
-		delete [] (*iter)->params;
+		delete[] (*iter)->params;
 		delete (*iter);
 	}
-	queries.clear();
 
+	queries.clear();
 	menu = 0;
 	newmenu = -1;
 }
 
-void CPlayer::PutInServer()
+void CPlayer::PutInServer(void)
 {
 	playtime = gpGlobals->time;
 	ingame = true;
-}
-
-int CPlayer::NextHUDChannel()
-{
-	int ilow = 1;
-
-	for (int i=ilow+1; i<=4; i++)
-	{
-		if (channels[i] < channels[ilow])
-			ilow = i;
-	}
-
-	return ilow;
 }
 
 bool CPlayer::Connect(const char* connectname, const char* ipaddress)
@@ -90,30 +79,32 @@ bool CPlayer::Connect(const char* connectname, const char* ipaddress)
 	menu = 0;
 	newmenu = -1;
 	
-	memset(flags, 0, sizeof(flags));
-	memset(weapons, 0, sizeof(weapons));
+	cmemset(flags, 0, sizeof(flags));
+	cmemset(weapons, 0, sizeof(weapons));
 	
 	initialized = true;
 	authorized = false;
 
-	for (int i=0; i<=4; i++)
+	uint_fast8_t i;
+	constexpr uint_fast8_t max = 4;
+	for (i = 0; i <= max; i++)
 	{
 		channels[i] = 0.0f;
 		hudmap[i] = 0;
 	}
 
-	List<ClientCvarQuery_Info *>::iterator iter, end=queries.end();
-	for (iter=queries.begin(); iter!=end; iter++)
+	List<ClientCvarQuery_Info*>::iterator iter, end = queries.end();
+	for (iter = queries.begin(); iter != end; iter++)
 	{
 		unregisterSPForward((*iter)->resultFwd);
-		delete [] (*iter)->params;
+		delete[] (*iter)->params;
 		delete (*iter);
 	}
+
 	queries.clear();
 
 	const char* authid = GETPLAYERAUTHID(pEdict);
-
-	if ((authid == 0) || (*authid == 0) || (strcmp(authid, "STEAM_ID_PENDING") == 0))
+	if (authid == 0 || *authid == 0 || cstrcmp(authid, "STEAM_ID_PENDING") == 0)
 		return true;
 
 	return false;
@@ -123,10 +114,12 @@ bool CPlayer::Connect(const char* connectname, const char* ipaddress)
 // class Grenades
 // *****************************************************
 
-void Grenades::put(edict_t* grenade, float time, int type, CPlayer* player)
+void Grenades::put(edict_t* grenade, const float time, const int type, CPlayer* player)
 {
-	Obj* a = new Obj;
-	if (a == 0) return;
+	Obj* a = new(std::nothrow) Obj;
+	if (a == nullptr)
+		return;
+
 	a->player = player;
 	a->grenade = grenade;
 	a->time = gpGlobals->time + time;
@@ -139,7 +132,8 @@ bool Grenades::find(edict_t* enemy, CPlayer** p, int& type)
 {
 	bool found = false;
 	Obj** a = &head;
-	
+	Obj* b;
+
 	while (*a)
 	{
 		if ((*a)->time > gpGlobals->time)
@@ -150,23 +144,27 @@ bool Grenades::find(edict_t* enemy, CPlayer** p, int& type)
 				(*p) = (*a)->player;
 				type = (*a)->type;
 			}
-		} else {
-			Obj* b = (*a)->next;
+		}
+		else
+		{
+			b = (*a)->next;
 			delete *a;
 			*a = b;
 			continue;
 		}
+
 		a = &(*a)->next;
 	}
 	
 	return found;
 }
 
-void Grenades::clear()
+void Grenades::clear(void)
 {
-	while (head)
+	Obj* a;
+	while (head != nullptr)
 	{
-		Obj* a = head->next;
+		a = head->next;
 		delete head;
 		head = a;
 	}
@@ -176,7 +174,7 @@ void Grenades::clear()
 // class XVars
 // *****************************************************
 
-void XVars::clear()
+void XVars::clear(void)
 {
 	delete[] head;
 	head = 0;
@@ -186,7 +184,8 @@ void XVars::clear()
 
 int XVars::put(AMX* p, cell* v)
 {
-	for (int a = 0; a < num; ++a)
+	int a;
+	for (a = 0; a < num; ++a)
 	{
 		if ((head[a].amx == p) && (head[a].value == v))
 			return a;
@@ -197,17 +196,16 @@ int XVars::put(AMX* p, cell* v)
 
 	head[num].value = v;
 	head[num].amx = p;
-	
 	return num++;
 }
 
-int XVars::realloc_array(int nsize)
+int XVars::realloc_array(const int nsize)
 {
-	XVarEle* me = new XVarEle[nsize];
-	
-	if (me)
+	XVarEle* me = new(std::nothrow) XVarEle[nsize];
+	if (me != nullptr)
 	{
-		for (int a = 0 ; a < num; ++a)
+		int a;
+		for (a = 0 ; a < num; ++a)
 			me[a] = head[a];
 		
 		delete[] head;
@@ -223,13 +221,14 @@ int XVars::realloc_array(int nsize)
 // class TeamIds
 // *****************************************************
 
-TeamIds::TeamIds() { head = 0; newTeam = 0; }
+TeamIds::TeamIds(void) { head = 0; newTeam = 0; }
 
-TeamIds::~TeamIds()
+TeamIds::~TeamIds(void)
 {
-	while (head)
+	TeamEle* a;
+	while (head != nullptr)
 	{
-		TeamEle* a = head->next;
+		a = head->next;
 		delete head;
 		head = a;
 	}
@@ -238,10 +237,9 @@ TeamIds::~TeamIds()
 void TeamIds::registerTeam(const char* n, int s)
 {
 	TeamEle** a = &head;
-	
 	while (*a)
 	{
-		if (strcmp((*a)->name.chars(),n) == 0)
+		if (cstrcmp((*a)->name.chars(),n) == 0)
 		{
 			if (s != -1)
 			{
@@ -251,25 +249,25 @@ void TeamIds::registerTeam(const char* n, int s)
 			
 			return;
 		}
+
 		a = &(*a)->next;
 	}
 
-	*a = new TeamEle(n, s);
-	
-	if (*a == 0)
+	*a = new(std::nothrow) TeamEle(n, s);
+	if (*a == nullptr)
 		return;
 	
-	newTeam |= (1<<(*a)->tid);
+	newTeam |= (1 << (*a)->tid);
 }
 
 int TeamIds::findTeamId(const char* n)
 {
 	TeamEle* a = head;
-	
-	while (a)
+	while (a != nullptr)
 	{
-		if (!stricmp(a->name.chars(), n))
+		if (!cstricmp(a->name.chars(), n))
 			return a->id;
+
 		a = a->next;
 	}
 	
@@ -279,11 +277,11 @@ int TeamIds::findTeamId(const char* n)
 int TeamIds::findTeamIdCase(const char* n)
 {
 	TeamEle* a = head;
-	
-	while (a)
+	while (a != nullptr)
 	{
-		if (!strcmp(a->name.chars(), n))
+		if (!cstrcmp(a->name.chars(), n))
 			return a->id;
+
 		a = a->next;
 	}
 	

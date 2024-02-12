@@ -159,7 +159,7 @@ struct fakecmd_t
 	const char *argv[3];
 	int argc;
 	bool fake;
-	bool notify; // notify to plugins.
+	bool notify; // notify to plugins
 };
 
 extern CLog g_log;
@@ -284,9 +284,10 @@ char* build_pathname_r(char *buffer, size_t maxlen, const char *fmt, ...);
 char* format_amxstring(AMX *amx, cell *params, int parm, int& len);
 AMX* get_amxscript(int, void**, const char**);
 const char* get_amxscriptname(AMX* amx);
-char* get_amxstring(AMX *amx, cell amx_addr, int id, int& len);
-char* get_amxstring_null(AMX *amx, cell amx_addr, int id, int& len);
-cell* get_amxvector_null(AMX *amx, cell amx_addr);
+char* get_amxstring(AMX *amx, const cell amx_addr, const int id, int& len);
+char* get_amxstring_nolen(AMX* amx, const  cell amx_addr, const int id);
+char* get_amxstring_null(AMX *amx, const cell amx_addr, const int id, int& len);
+cell* get_amxvector_null(AMX *amx, const cell amx_addr);
 extern "C" size_t get_amxstring_r(AMX *amx, cell amx_addr, char *destination, int maxlen);
 
 int amxstring_len(cell* cstr);

@@ -128,14 +128,15 @@ SMCError TextParsers::ParseSMCFile(const char *file,
 	const char *errstr;
 	FILE *fp = fopen(file, "rt");
 
-	if (fp == NULL)
+	if (!fp)
 	{
 		char error[256] = "unknown";
-		if (states != NULL)
+		if (states)
 		{
 			states->line = 0;
 			states->col = 0;
 		}
+
 		/*libsys->GetPlatformError(error, sizeof(error));*/
 		ke::SafeSprintf(buffer, maxsize, "File could not be opened: %s", error);
 		return SMCError_StreamOpen;
@@ -501,7 +502,7 @@ SMCError TextParsers::ParseStream_SMC(void *stream,
 							ml_comment = false;
 							ignoring = false;
 							/* We should not be staging anything right now. */
-							assert(strings[0].ptr == NULL);
+							assert(!strings[0].ptr);
 							/* Advance the input stream so we don't choke on this token */
 							i++;
 							states.col++;
@@ -582,7 +583,7 @@ SMCError TextParsers::ParseStream_SMC(void *stream,
 							err = SMCError_InvalidSection1;
 							goto failed;
 						}
-						else if (strings[1].ptr == NULL)
+						else if (!strings[1].ptr)
 						{
 							err = SMCError_InvalidSection2;
 							goto failed;
@@ -806,10 +807,8 @@ bool TextParsers::ParseFile_INI(const char *file, ITextListener_INI *ini_listene
 		curline++;
 		curtok = 0;
 		buffer[0] = '\0';
-		if (fgets(buffer, sizeof(buffer), fp) == NULL)
-		{
+		if (!fgets(buffer, sizeof(buffer), fp))
 			break;
-		}
 
 		//:TODO: this will only run once, so find a nice way to move it out of the while loop
 		/* If this is the first line, check the first three bytes for BOM */

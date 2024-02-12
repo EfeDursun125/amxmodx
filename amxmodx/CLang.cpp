@@ -12,6 +12,7 @@
 #include "CLang.h"
 #include "format.h"
 #include "ITextParsers.h"
+#include <clib.h>
 
 #define LITIDX_NONE			0
 #define LITIDX_BRACKET		1
@@ -99,7 +100,7 @@ size_t CLangMngr::strip(char *str, char *newstr, bool makelower)
 	size_t i = 0;
 	size_t pos = 0;
 	int flag = 0;
-	size_t strln = strlen(str);
+	size_t strln = cstrlen(str);
 
 	for (i = strln - 1; i < strln; i--)
 	{
@@ -119,10 +120,10 @@ size_t CLangMngr::strip(char *str, char *newstr, bool makelower)
 			if (*ptr != '\n' && *ptr != ' ' && *ptr != '\t')
 			{
 				flag = 1;
-				newstr[pos++] = makelower ? tolower(*ptr) : *ptr;
+				newstr[pos++] = makelower ? ctolower(*ptr) : *ptr;
 			}
 		} else {
-			newstr[pos++] = makelower ? tolower(*ptr) : *ptr;
+			newstr[pos++] = makelower ? ctolower(*ptr) : *ptr;
 		}
 		++ptr;
 	}
@@ -279,21 +280,21 @@ char * CLangMngr::FormatAmxString(AMX *amx, cell *params, int parm, int &len)
 
 void CLangMngr::MergeDefinitions(const char *lang, ke::Vector<sKeyDef> &tmpVec)
 {
-	CLang * language = GetLang(lang);
+	CLang* language = GetLang(lang);
 	if (language)
 		language->MergeDefinitions(tmpVec);
 }
 
 void reparse_newlines_and_color(char* def)
 {
-	size_t len = strlen(def);
-	int offs = 0;
-	int c;
-
+	const size_t len = static_cast<size_t>(cstrlen(def));
 	if (!len)
 		return;
 
-	for (size_t i = 0; i < len; i++)
+	int offs = 0;
+	int c;
+	size_t i;
+	for (i = 0; i < len; i++)
 	{
 		c = def[i]; 
 
@@ -467,11 +468,11 @@ void CLangMngr::ReadINI_ParseEnd(bool halted)
 	}
 }
 
-//this is the file parser for dictionary text files
+// this is the file parser for dictionary text files
 // -- BAILOPAN
 int CLangMngr::MergeDefinitionFile(const char *file)
 {
-	/** Tries to open the file. */
+	/** tries to open the file. */
 	struct stat fileStat;
 	if (stat(file, &fileStat))
 	{
@@ -480,22 +481,17 @@ int CLangMngr::MergeDefinitionFile(const char *file)
 		return 0;
 	}
 
-	/** Checks if there is an existing entry with same time stamp. */
+	/** checks if there is an existing entry with same time stamp. */
 	time_t timeStamp;
 	if (FileList.retrieve(file, &timeStamp) && fileStat.st_mtime == timeStamp)
-	{
 		return -1;
-	}
 
-	/** If yes, it either means that the entry doesn't exist or the existing entry needs to be updated. */
+	/** if yes, it either means that the entry doesn't exist or the existing entry needs to be updated. */
 	FileList.replace(file, fileStat.st_mtime);
-
 	Data.currentFile = file;
 
 	unsigned int line, col;
-	bool result = textparsers->ParseFile_INI(file, static_cast<ITextListener_INI*>(this), &line, &col, false);
-
-	if (!result)
+	if (!textparsers->ParseFile_INI(file, static_cast<ITextListener_INI*>(this), &line, &col, false))
 	{
 		AMXXLOG_Log("[AMXX] Failed to re-open dictionary file: %s", file);
 		return 0;
@@ -507,15 +503,19 @@ int CLangMngr::MergeDefinitionFile(const char *file)
 // Find a CLang by name, if not found, add it
 CLangMngr::CLang * CLangMngr::GetLang(const char *name)
 {
-	for (size_t iter = 0; iter < m_Languages.length(); ++iter)
+	size_t iter;
+	const size_t length = m_Languages.length();
+	for (iter = 0; iter < length; ++iter)
 	{
-		if (strcmp(m_Languages[iter]->GetName(), name) == 0)
+		if (cstrcmp(m_Languages[iter]->GetName(), name) == 0)
 			return m_Languages[iter];
 	}
 
-	CLang *p = new CLang(name);
-	p->SetMngr(this);
+	CLang *p = new(std::nothrow) CLang(name);
+	if (!p)
+		return nullptr;
 
+	p->SetMngr(this);
 	m_Languages.append(p);
 	return p;
 }
@@ -523,9 +523,11 @@ CLangMngr::CLang * CLangMngr::GetLang(const char *name)
 // Find a CLang by name, if not found, return NULL
 CLangMngr::CLang * CLangMngr::GetLangR(const char *name)
 {
-	for (size_t iter = 0; iter < m_Languages.length(); ++iter)
+	size_t iter;
+	const size_t length = m_Languages.length();
+	for (iter = 0; iter < length; ++iter)
 	{
-		if (strcmp(m_Languages[iter]->GetName(), name) == 0)
+		if (cstrcmp(m_Languages[iter]->GetName(), name) == 0)
 			return m_Languages[iter];
 	}
 
@@ -535,44 +537,48 @@ CLangMngr::CLang * CLangMngr::GetLangR(const char *name)
 const char *CLangMngr::GetDef(const char *langName, const char *key, int &status)
 {
 	CLang *lang = GetLangR(langName);
-
 	keytbl_val &val = KeyTable.AltFindOrInsert(ke::AString(key)); //KeyTable[make_string(key)];
-	if (lang == NULL)
+	if (!lang)
 	{
 		status = ERR_BADLANG;
-		return NULL;
-	} else if (val.index == -1) {
+		return nullptr;
+	}
+	else if (val.index == -1)
+	{
 		status = ERR_BADKEY;
-		return NULL;
-	} else {
+		return nullptr;
+	}
+	else
+	{
 		status = 0;
 		return lang->GetDef(val.index, status);
 	}
 }
 
-void CLangMngr::InvalidateCache()
+void CLangMngr::InvalidateCache(void)
 {
 	FileList.clear();
 }
 
-CLangMngr::~CLangMngr()
+CLangMngr::~CLangMngr(void)
 {
 	Clear();
 }
 
-void CLangMngr::Clear()
+void CLangMngr::Clear(void)
 {
-	unsigned int i = 0;
+	size_t i = 0;
+	size_t length = m_Languages.length();
 
 	KeyTable.clear();
-	
-	for (i = 0; i < m_Languages.length(); i++)
+	for (i = 0; i < length; i++)
 	{
 		if (m_Languages[i])
 			delete m_Languages[i];
 	}
 
-	for (i = 0; i < KeyList.length(); i++)
+	length = KeyList.length();
+	for (i = 0; i < length; i++)
 	{
 		if (KeyList[i])
 			delete KeyList[i];
@@ -583,19 +589,19 @@ void CLangMngr::Clear()
 	FileList.clear();
 }
 
-int CLangMngr::GetLangsNum()
+int CLangMngr::GetLangsNum(void)
 {
 	return m_Languages.length();
 }
 
-const char *CLangMngr::GetLangName(int langId)
+const char *CLangMngr::GetLangName(const size_t langId)
 {
-	for (size_t iter = 0; iter < m_Languages.length(); ++iter)
+	size_t iter;
+	const size_t length = m_Languages.length();
+	for (iter = 0; iter < length; ++iter)
 	{
-		if ((int)iter == langId)
-		{
+		if (iter == langId)
 			return m_Languages[iter]->GetName();
-		}
 	}
 
 	return "";
@@ -606,23 +612,24 @@ bool CLangMngr::LangExists(const char *langName)
 	char buf[3] = {0};
 	int i = 0;
 	
-	while ((buf[i] = tolower(*langName++)))
+	while ((buf[i] = ctolower(*langName++)))
 	{	
 		if (++i == 2)
 			break;
 	}
 	
-	for (size_t iter = 0; iter < m_Languages.length(); ++iter)
+	size_t iter;
+	const size_t length = m_Languages.length();
+	for (iter = 0; iter < length; ++iter)
 	{
-		if (strcmp(m_Languages[iter]->GetName(), buf) == 0)
-		{
+		if (cstrcmp(m_Languages[iter]->GetName(), buf) == 0)
 			return true;
-		}
 	}
+
 	return false;
 }
 
-void CLangMngr::SetDefLang(int id)
+void CLangMngr::SetDefLang(const int id)
 {
 	m_CurGlobId = id;
 }

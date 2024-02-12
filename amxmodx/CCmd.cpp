@@ -9,14 +9,15 @@
 
 #include "amxmodx.h"
 #include "CCmd.h"
+#include <clib.h>
 
 // *****************************************************
 // class CmdMngr
 // *****************************************************
 
-CmdMngr::CmdMngr()
+CmdMngr::CmdMngr(void)
 { 
-	memset(sortedlists, 0, sizeof(sortedlists));
+	cmemset(sortedlists, 0, sizeof(sortedlists));
 	srvcmdlist = 0;
 	clcmdlist = 0;
 	prefixHead = 0;
@@ -26,11 +27,9 @@ CmdMngr::CmdMngr()
 	buf_cmdid = -1;
 	buf_cmdtype = -1;
 	buf_cmdaccess = 0;
-
 }
 
-CmdMngr::Command::Command(CPluginMngr::CPlugin* pplugin, const char* pcmd, const char* pinfo, int pflags, 
-							int pfunc, bool pviewable, bool pinfo_ml, CmdMngr* pparent) : commandline(pcmd), info(pinfo)
+CmdMngr::Command::Command(CPluginMngr::CPlugin* pplugin, const char* pcmd, const char* pinfo, const int pflags, const int pfunc, const bool pviewable, const bool pinfo_ml, CmdMngr* pparent) : commandline(pcmd), info(pinfo)
 {
 	char szCmd[64], szArg[64];
 	*szCmd = 0; *szArg = 0;
@@ -48,28 +47,31 @@ CmdMngr::Command::Command(CPluginMngr::CPlugin* pplugin, const char* pcmd, const
 	id = --uniqueid;
 }
 
-CmdMngr::Command::~Command()
+CmdMngr::Command::~Command(void)
 {
 	++uniqueid;
 }
 
-CmdMngr::Command* CmdMngr::registerCommand(CPluginMngr::CPlugin* plugin, int func, const char* cmd, const char* info, int level, bool listable, bool info_ml)
+CmdMngr::Command* CmdMngr::registerCommand(CPluginMngr::CPlugin* plugin, const int func, const char* cmd, const char* info, const int level, const bool listable, const bool info_ml)
 {
-	Command* b = new Command(plugin, cmd, info, level, func, listable, info_ml, this);
-	if (b == 0) return 0;
+	Command* b = new(std::nothrow) Command(plugin, cmd, info, level, func, listable, info_ml, this);
+	if (!b)
+		return 0;
+
 	setCmdLink(&sortedlists[0], b);
-	
 	return b;
 }
 
-CmdMngr::Command* CmdMngr::getCmd(long int id, int type, int access)
+CmdMngr::Command* CmdMngr::getCmd(long int id, const int type, const int access)
 {
 	//if (id >= 1024 || id < 0) return (Command*)id;
 	if (id < 0)
 	{
-		for (CmdMngr::iterator a = begin(type); a ; ++a)
+		CmdMngr::iterator a = begin(type);
+		const CmdMngr::iterator b = end();
+		for (; a != b; ++a)
 		{
-			if ((*a).id == id)
+			if (a && (*a).id == id)
 				return &(*a);
 		}
 		
@@ -82,8 +84,10 @@ CmdMngr::Command* CmdMngr::getCmd(long int id, int type, int access)
 		buf_cmdaccess = access;
 		buf_cmdtype = type;
 		buf_cmdid = id;
-	} else {
-		int a = id;
+	}
+	else
+	{
+		const int a = id;
 		id -= buf_cmdid;
 		buf_cmdid = a;
 	}
@@ -95,44 +99,41 @@ CmdMngr::Command* CmdMngr::getCmd(long int id, int type, int access)
 			if (id-- == 0) 
 				return &(*buf_cmdptr);
 		}
+
 		++buf_cmdptr;
 	}
 
 	return 0;		
 }
 
-int CmdMngr::getCmdNum(int type, int access)
+int CmdMngr::getCmdNum(const int type, const int access)
 {
-
 	buf_access = access;
 	buf_type = type;
 	buf_num = 0;
-
 	CmdMngr::iterator a = begin(type);
-
-	while (a)
+	const CmdMngr::iterator b = end();
+	for (; a != b; ++a)
 	{
-		if ((*a).gotAccess(access) && (*a).getPlugin()->isExecutable((*a).getFunction()) && (*a).isViewable())
+		if (a && (*a).gotAccess(access) && (*a).getPlugin()->isExecutable((*a).getFunction()) && (*a).isViewable())
 			++buf_num;
-		++a;
 	}
 
 	return buf_num;
 }
 
-void CmdMngr::setCmdLink(CmdLink** a, Command* c, bool sorted)
+void CmdMngr::setCmdLink(CmdLink** a, Command* c, const bool sorted)
 {
-	CmdLink* np = new CmdLink(c);
-
-	if (np == 0) return;
+	CmdLink* np = new(std::nothrow) CmdLink(c);
+	if (!np)
+		return;
 
 	if (sorted)
 	{
 		while (*a)
 		{
-			int i = strcmp(c->getCommand(), (*a)->cmd->getCommand());
-
-			if ((i < 0) || ((i == 0) && (strcmp(c->getArgument(), (*a)->cmd->getArgument()) < 0)))
+			const int i = cstrcmp(c->getCommand(), (*a)->cmd->getCommand());
+			if ((i < 0) || ((i == 0) && (cstrcmp(c->getArgument(), (*a)->cmd->getArgument()) < 0)))
 				break;
 			
 			a = &(*a)->next;
@@ -140,25 +141,29 @@ void CmdMngr::setCmdLink(CmdLink** a, Command* c, bool sorted)
 
 		np->next = *a;
 		*a = np;
-	} else {
+	}
+	else
+	{
 		while (*a) a = &(*a)->next;
 		*a = np;
 	}
 }
 
-void CmdMngr::clearCmdLink(CmdLink** phead, bool pclear)
+void CmdMngr::clearCmdLink(CmdLink** phead, const bool pclear)
 {
+	CmdLink* pp;
 	while (*phead)
 	{
-		CmdLink* pp = (*phead)->next;
-		
-		if (pclear) delete (*phead)->cmd;
+		pp = (*phead)->next;
+		if (pclear)
+			delete (*phead)->cmd;
+
 		delete *phead;
 		*phead = pp;
 	}
 }
 
-void CmdMngr::Command::setCmdType(int a)
+void CmdMngr::Command::setCmdType(const int a)
 {
 	switch (a)
 	{
@@ -167,22 +172,21 @@ void CmdMngr::Command::setCmdType(int a)
 		case CMD_ServerCommand: cmdtype |= 2; break;
 	}
 
-	if (cmdtype & 1)	// ClientCommand
+	if (cmdtype & 1) // ClientCommand
 	{
 		parent->setCmdLink(&parent->sortedlists[1], this);
-		
 		if (!parent->registerCmdPrefix(this))
 			parent->setCmdLink(&parent->clcmdlist, this, false);
 	}
 	
-	if (cmdtype & 2)	// ServerCommand
+	if (cmdtype & 2) // ServerCommand
 	{
 		parent->setCmdLink(&parent->sortedlists[2], this);
 		parent->setCmdLink(&parent->srvcmdlist, this, false);
 	}
 }
 
-const char* CmdMngr::Command::getCmdType() const
+const char* CmdMngr::Command::getCmdType(void) const
 {
 	switch (cmdtype)
 	{
@@ -197,7 +201,6 @@ const char* CmdMngr::Command::getCmdType() const
 bool CmdMngr::registerCmdPrefix(Command* cc)
 {
 	CmdPrefix** b = findPrefix(cc->getCommand());
-
 	if (*b)
 	{
 		setCmdLink(&(*b)->list, cc, false);
@@ -210,38 +213,44 @@ bool CmdMngr::registerCmdPrefix(Command* cc)
 
 void CmdMngr::registerPrefix(const char* nn)
 {
-	if (*nn == 0) return;
+	if (*nn == 0)
+		return;
+
 	CmdPrefix** b = findPrefix(nn);
-	
-	if (*b) return;
-	*b = new CmdPrefix(nn, this);
+	if (*b)
+		return;
+
+	auto mem = new(std::nothrow) CmdPrefix(nn, this);
+	if (mem)
+		*b = mem;
 }
 
 CmdMngr::CmdPrefix** CmdMngr::findPrefix(const char* nn)
 {
 	CmdPrefix** aa = &prefixHead;
-	
 	while (*aa)
 	{
-		if (!strncmp((*aa)->name.chars(), nn, (*aa)->name.length()))
+		if (!cstrncmp((*aa)->name.chars(), nn, (*aa)->name.length()))
 			break;
+
 		aa = &(*aa)->next;
 	}
 	
 	return aa;
 }
 
-void CmdMngr::clearPrefix()
+void CmdMngr::clearPrefix(void)
 {
-	while (prefixHead)
+	CmdPrefix* a;
+	while (prefixHead != nullptr)
 	{
-		CmdPrefix* a = prefixHead->next;
+		a = prefixHead->next;
 		delete prefixHead;
 		prefixHead = a;
 	}
 }
 
-void CmdMngr::clear()
+void CmdMngr::clear(void)
 {
 	clearCmdLink(&sortedlists[0], true);
 	clearCmdLink(&sortedlists[1]);
@@ -252,7 +261,7 @@ void CmdMngr::clear()
 	clearBufforedInfo();
 }
 
-void CmdMngr::clearBufforedInfo()
+void CmdMngr::clearBufforedInfo(void)
 {
 	buf_type = -1; 
 	buf_access = 0; 

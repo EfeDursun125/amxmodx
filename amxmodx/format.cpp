@@ -10,6 +10,7 @@
 #include "amxmodx.h"
 #include "format.h"
 #include "datastructs.h"
+#include <clib.h>
 
 //Adapted from Quake3's vsprintf
 // thanks to cybermind for linking me to this :)
@@ -50,42 +51,27 @@ static cvar_t *amx_cl_langs = nullptr;
 const char *playerlang(const cell index)
 {
 	const char *pLangName = nullptr;
-
 	if (index == LANG_PLAYER)
 	{
 		if (!amx_cl_langs)
-		{
 			amx_cl_langs = CVAR_GET_POINTER("amx_client_languages");
-		}
 
-		if (static_cast<int>(amx_cl_langs->value) == 0)
-		{
+		if (!static_cast<int>(amx_cl_langs->value))
 			pLangName = amxmodx_language->string;
-		}
 		else
-		{
 			pLangName = ENTITY_KEYVALUE(GET_PLAYER_POINTER_I(g_langMngr.GetDefLang())->pEdict, "lang");
-		}
 	}
 	else if (index == LANG_SERVER)
-	{
 		pLangName = amxmodx_language->string;
-	}
 	else if (index >= 1 && index <= gpGlobals->maxClients)
 	{
 		if (!amx_cl_langs)
-		{
 			amx_cl_langs = CVAR_GET_POINTER("amx_client_languages");
-		}
 
-		if (static_cast<int>(amx_cl_langs->value) == 0)
-		{
+		if (!static_cast<int>(amx_cl_langs->value))
 			pLangName = amxmodx_language->string;
-		}
 		else
-		{
 			pLangName = ENTITY_KEYVALUE(GET_PLAYER_POINTER_I(index)->pEdict, "lang");
-		}
 	}
 
 	return pLangName;
@@ -93,28 +79,22 @@ const char *playerlang(const cell index)
 
 const char *translate(AMX *amx, const char *lang, const char *key)
 {
-	auto pLangName = lang;
-	int status;
-
+	const char* pLangName = lang;
 	if (!pLangName || !isalpha(pLangName[0]))
-	{
 		pLangName = amxmodx_language->string;
-	}
 
-	auto def = g_langMngr.GetDef(pLangName, key, status);
+	int status;
+	const char* def = g_langMngr.GetDef(pLangName, key, status);
 
 	if (!amx_mldebug)
-	{
 		amx_mldebug = CVAR_GET_POINTER("amx_mldebug");
-	}
 
-	auto debug = (amx_mldebug && amx_mldebug->string && (amx_mldebug->string[0] != '\0'));
-
+	const bool debug = (amx_mldebug && amx_mldebug->string && (amx_mldebug->string[0] != '\0'));
 	if (debug)
 	{
 		int debug_status;
-		auto validlang = true;
-		auto testlang = amx_mldebug->string;
+		bool validlang = true;
+		const char* testlang = amx_mldebug->string;
 
 		if (!g_langMngr.LangExists(testlang))
 		{
@@ -123,11 +103,8 @@ const char *translate(AMX *amx, const char *lang, const char *key)
 		}
 
 		g_langMngr.GetDef(testlang, key, debug_status);
-
 		if (validlang && debug_status == ERR_BADKEY)
-		{
 			AMXXLOG_Error("[AMXX] Language key \"%s\" not found for language \"%s\", check \"%s\"", key, testlang, GetFileName(amx));
-		}
 	}
 
 	if (!def)
@@ -135,9 +112,7 @@ const char *translate(AMX *amx, const char *lang, const char *key)
 		if (debug && status == ERR_BADLANG)
 		{
 			ke::AString langName(pLangName);
-
 			auto &err = BadLang_Table.AltFindOrInsert(ke::Move(langName));
-
 			if (err.last + 120.0f < gpGlobals->time)
 			{
 				AMXXLOG_Error("[AMXX] Language \"%s\" not found", pLangName);
@@ -145,15 +120,11 @@ const char *translate(AMX *amx, const char *lang, const char *key)
 			}
 		}
 
-		if (strcmp(pLangName, amxmodx_language->string) != 0)
-		{
+		if (cstrcmp(pLangName, amxmodx_language->string) != 0)
 			def = g_langMngr.GetDef(amxmodx_language->string, key, status);
-		}
 
-		if (!def && (strcmp(pLangName, "en") != 0 && strcmp(amxmodx_language->string, "en") != 0))
-		{
+		if (!def && (cstrcmp(pLangName, "en") != 0 && cstrcmp(amxmodx_language->string, "en") != 0))
 			def = g_langMngr.GetDef("en", key, status);
-		}
 	}
 
 	return def;
@@ -165,10 +136,9 @@ void AddString(U **buf_p, size_t &maxlen, const S *string, int width, int prec)
 	int		size = 0;
 	U		*buf;
 	static S nlstr[] = {'(','n','u','l','l',')','\0'};
-
 	buf = *buf_p;
 
-	if (string == NULL)
+	if (!string)
 	{
 		string = nlstr;
 		prec = -1;
@@ -181,23 +151,22 @@ void AddString(U **buf_p, size_t &maxlen, const S *string, int width, int prec)
 			if (string[size] == '\0')
 				break;
 		}
-	} else {
+	}
+	else
+	{
 		while (string[size++]) ;
 		size--;
 	}
 
-	if (size > (int)maxlen)
+	if (size > static_cast<int>(maxlen))
 		size = maxlen;
 
 	/* If precision is provided, make sure we don't truncate a multi-byte character */
 	if (prec >= size && (string[size - 1] & 1 << 7))
-	{
 		size -= UTIL_CheckValidChar((cell *)string + size - 1);
-	}
 
 	maxlen -= size;
 	width -= size;
-
 	while (size--)
 		*buf++ = static_cast<U>(*string++);
 
@@ -210,6 +179,7 @@ void AddString(U **buf_p, size_t &maxlen, const S *string, int width, int prec)
 	*buf_p = buf;
 }
 
+#define MAX_SIGNIFICANT_DIGITS 16
 template <typename U>
 void AddFloat(U **buf_p, size_t &maxlen, double fval, int width, int prec, int flags)
 {
@@ -220,29 +190,24 @@ void AddFloat(U **buf_p, size_t &maxlen, double fval, int width, int prec, int f
 	int sign = 0;				// 0: positive, 1: negative
 	int fieldlength;			// for padding
 	int significant_digits = 0;		// number of significant digits written
-	const int MAX_SIGNIFICANT_DIGITS = 16;
 
 	// default precision
 	if (prec < 0)
-	{
 		prec = 6;
-	}
 
 	// get the sign
-	if (fval < 0)
+	if (fval < 0.0)
 	{
 		fval = -fval;
 		sign = 1;
 	}
 
 	// compute whole-part digits count
-	digits = (int)log10(fval) + 1;
+	digits = static_cast<int>(log10(fval)) + 1;
 
-	// Only print 0.something if 0 < fval < 1
+	// only print 0.something if 0 < fval < 1
 	if (digits < 1)
-	{
 		digits = 1;
-	}
 
 	// compute the field length
 	fieldlength = digits + prec + ((prec > 0) ? 1 : 0) + sign;
@@ -255,7 +220,7 @@ void AddFloat(U **buf_p, size_t &maxlen, double fval, int width, int prec, int f
 	}
 
 	// right justify if required
-	if ((flags & LADJUST) == 0)
+	if (!(flags & LADJUST))
 	{
 		while ((fieldlength < width) && maxlen)
 		{
@@ -273,16 +238,14 @@ void AddFloat(U **buf_p, size_t &maxlen, double fval, int width, int prec, int f
 	}
 
 	// write the whole part
-	tmp = pow(10.0, digits-1);
-	while ((digits--) && maxlen)
+	tmp = cpow(10.0, static_cast<double>(digits - 1));
+	while (digits-- && maxlen)
 	{
 		if (++significant_digits > MAX_SIGNIFICANT_DIGITS)
-		{
 			*buf++ = '0';
-		}
 		else
 		{
-			val = (int)(fval / tmp);
+			val = static_cast<int>(fval / tmp);
 			*buf++ = '0' + val;
 			fval -= val * tmp;
 			tmp *= 0.1;
@@ -297,19 +260,17 @@ void AddFloat(U **buf_p, size_t &maxlen, double fval, int width, int prec, int f
 		maxlen--;
 	}
 
-	tmp = pow(10.0, prec);
+	tmp = cpow(10.0, static_cast<double>(prec));
 
 	fval *= tmp;
 	while (prec-- && maxlen)
 	{
 		if (++significant_digits > MAX_SIGNIFICANT_DIGITS)
-		{
 			*buf++ = '0';
-		}
 		else
 		{
 			tmp *= 0.1;
-			val = (int)(fval / tmp);
+			val = static_cast<int>(fval / tmp);
 			*buf++ = '0' + val;
 			fval -= val * tmp;
 		}
@@ -343,18 +304,13 @@ void AddBinary(U **buf_p, size_t &maxlen, unsigned int val, int width, int flags
 	do
 	{
 		if (val & 1)
-		{
 			text[digits++] = '1';
-		}
 		else
-		{
 			text[digits++] = '0';
-		}
 		val >>= 1;
 	} while (val);
 
 	buf = *buf_p;
-
 	if (!(flags & LADJUST))
 	{
 		while (digits < width && maxlen)
@@ -392,14 +348,15 @@ void AddUInt(U **buf_p, size_t &maxlen, unsigned int val, int width, int flags)
 	U		*buf;
 
 	digits = 0;
-	do {
+	do
+	{
 		text[digits++] = '0' + val % 10;
 		val /= 10;
 	} while (val);
 
 	buf = *buf_p;
 
-	if( !(flags & LADJUST) )
+	if (!(flags & LADJUST))
 	{
 		while (digits < width && maxlen)
 		{
@@ -440,13 +397,12 @@ void AddInt(U **buf_p, size_t &maxlen, int val, int width, int flags)
 	digits = 0;
 	signedVal = val;
 	if (val < 0)
-	{
-		/* we want the unsigned version */
-		unsignedVal = abs(val);
-	} else {
+		unsignedVal = cabs(val);
+	else 
 		unsignedVal = val;
-	}
-	do {
+
+	do
+	{
 		text[digits++] = '0' + unsignedVal % 10;
 		unsignedVal /= 10;
 	} while (unsignedVal);
@@ -455,8 +411,7 @@ void AddInt(U **buf_p, size_t &maxlen, int val, int width, int flags)
 		text[digits++] = '-';
 
 	buf = *buf_p;
-
-	if( !(flags & LADJUST) )
+	if (!(flags & LADJUST))
 	{
 		while (digits < width && maxlen)
 		{
@@ -495,20 +450,16 @@ void AddHex(U **buf_p, size_t &maxlen, unsigned int val, int width, int flags)
 	int		hexadjust;
 
 	if (flags & UPPERDIGITS)
-	{
 		hexadjust = 'A' - '9' - 1;
-	} else {
+	else
 		hexadjust = 'a' - '9' - 1;
-	}
 
 	digits = 0;
 	do
 	{
 		digit = ('0' + val % 16);
 		if (digit > '9')
-		{
 			digit += hexadjust;
-		}
 
 		text[digits++] = digit;
 		val /= 16;
@@ -516,7 +467,7 @@ void AddHex(U **buf_p, size_t &maxlen, unsigned int val, int width, int flags)
 
 	buf = *buf_p;
 
-	if( !(flags & LADJUST) )
+	if (!(flags & LADJUST))
 	{
 		while (digits < width && maxlen)
 		{
@@ -546,19 +497,19 @@ void AddHex(U **buf_p, size_t &maxlen, unsigned int val, int width, int flags)
 }
 
 template <typename D, typename S>
-size_t atcprintf(D *buffer, size_t maxlen, const S *format, AMX *amx, cell *params, int *param)
+size_t atcprintf(D *buffer, const size_t maxlen, const S *format, AMX *amx, cell *params, int *param)
 {
-	int		arg;
-	int		args = params[0] / sizeof(cell);
-	D		*buf_p;
-	D		ch;
-	int		flags;
-	int		width;
-	int		prec;
-	int		n;
-	//char	sign;
+	int	arg;
+	const int args = params[0] / sizeof(cell);
+	D *buf_p;
+	D ch;
+	int	flags;
+	int	width;
+	int	prec;
+	int	n;
+	//char sign;
 	const S	*fmt;
-	size_t	llen = maxlen;
+	size_t llen = maxlen;
 
 	buf_p = buffer;
 	arg = *param;
@@ -567,13 +518,12 @@ size_t atcprintf(D *buffer, size_t maxlen, const S *format, AMX *amx, cell *para
 	while (true)
 	{
 		// run through the format string until we hit a '%' or '\0'
-		for (ch = static_cast<D>(*fmt); 
-			llen && ((ch = static_cast<D>(*fmt)) != '\0' && ch != '%');
-			fmt++)
+		for (ch = static_cast<D>(*fmt); llen && ((ch = static_cast<D>(*fmt)) != '\0' && ch != '%'); fmt++)
 		{
 			*buf_p++ = static_cast<D>(ch);
 			llen--;
 		}
+
 		if (ch == '\0' || llen <= 0)
 			goto done;
 
@@ -589,20 +539,27 @@ size_t atcprintf(D *buffer, size_t maxlen, const S *format, AMX *amx, cell *para
 rflag:
 		ch = static_cast<D>(*fmt++);
 reswitch:
+
 		switch(ch)
 		{
 		case '-':
+		{
 			flags |= LADJUST;
 			goto rflag;
+		}
 		case '.':
+		{
 			n = 0;
-			while( is_digit( ( ch = static_cast<D>(*fmt++)) ) )
-				n = 10 * n + ( ch - '0' );
+			while (is_digit((ch = static_cast<D>(*fmt++))))
+				n = 10 * n + (ch - '0');
 			prec = n < 0 ? -1 : n;
 			goto reswitch;
+		}
 		case '0':
+		{
 			flags |= ZEROPAD;
 			goto rflag;
+		}
 		case '1':
 		case '2':
 		case '3':
@@ -612,187 +569,205 @@ reswitch:
 		case '7':
 		case '8':
 		case '9':
+		{
 			n = 0;
-			do {
-				n = 10 * n + ( ch - '0' );
+			do
+			{
+				n = 10 * n + (ch - '0');
 				ch = static_cast<D>(*fmt++);
-			} while( is_digit( ch ) );
+			} while (is_digit(ch));
 			width = n;
 			goto reswitch;
+		}
 		case 'c':
+		{
 			CHECK_ARGS(0);
 			*buf_p++ = static_cast<D>(*get_amxaddr(amx, params[arg]));
 			llen--;
 			arg++;
 			break;
+		}
 		case 'b':
+		{
 			CHECK_ARGS(0);
 			AddBinary(&buf_p, llen, *get_amxaddr(amx, params[arg]), width, flags);
 			arg++;
 			break;
+		}
 		case 'd':
 		case 'i':
+		{
 			CHECK_ARGS(0);
 			AddInt(&buf_p, llen, *get_amxaddr(amx, params[arg]), width, flags);
 			arg++;
 			break;
+		}
 		case 'u':
+		{
 			CHECK_ARGS(0);
 			AddUInt(&buf_p, llen, static_cast<unsigned int>(*get_amxaddr(amx, params[arg])), width, flags);
 			arg++;
 			break;
+		}
 		case 'f':
+		{
 			CHECK_ARGS(0);
 			AddFloat(&buf_p, llen, amx_ctof(*get_amxaddr(amx, params[arg])), width, prec, flags);
 			arg++;
 			break;
+		}
 		case 'X':
+		{
 			CHECK_ARGS(0);
 			flags |= UPPERDIGITS;
 			AddHex(&buf_p, llen, static_cast<unsigned int>(*get_amxaddr(amx, params[arg])), width, flags);
 			arg++;
 			break;
+		}
 		case 'x':
+		{
 			CHECK_ARGS(0);
 			AddHex(&buf_p, llen, static_cast<unsigned int>(*get_amxaddr(amx, params[arg])), width, flags);
 			arg++;
 			break;
+		}
 		case 'a':
+		{
+			CHECK_ARGS(0);
+			// %a is passed a pointer directly to a cell string.
+			const cell* ptr = reinterpret_cast<cell*>(*get_amxaddr(amx, params[arg]));
+			if (!ptr)
 			{
-				CHECK_ARGS(0);
-				// %a is passed a pointer directly to a cell string.
-				cell* ptr=reinterpret_cast<cell*>(*get_amxaddr(amx, params[arg]));
-				if (!ptr)
-				{
-					LogError(amx, AMX_ERR_NATIVE, "Invalid vector string handle provided (%d)", *get_amxaddr(amx, params[arg]));
-					return 0;
-				}
-
-				AddString(&buf_p, llen, ptr, width, prec);
-				arg++;
-				break;
+				LogError(amx, AMX_ERR_NATIVE, "Invalid vector string handle provided (%d)", *get_amxaddr(amx, params[arg]));
+				return 0;
 			}
+
+			AddString(&buf_p, llen, ptr, width, prec);
+			arg++;
+			break;
+		}
 		case 's':
+		{
 			CHECK_ARGS(0);
 			AddString(&buf_p, llen, get_amxaddr(amx, params[arg]), width, prec);
 			arg++;
 			break;
+		}
 		case 'L':
 		case 'l':
+		{
+			const char* lang;
+			int len;
+			if (ch == 'L')
 			{
-				const char *lang;
-				int len;
-				if (ch == 'L')
-				{
-					CHECK_ARGS(1);
-					auto currParam = params[arg++];
-					lang = playerlang(*get_amxaddr(amx, currParam));
-					if (!lang)
-						lang = get_amxstring(amx, currParam, 2, len);
-				}
-				else
-				{
-					CHECK_ARGS(0);
-					lang = playerlang(g_langMngr.GetDefLang());
-				}
-				const char *key = get_amxstring(amx, params[arg++], 3, len);
-				const char *def = translate(amx, lang, key);
-				if (!def)
-				{
-					static char buf[255];
-					ke::SafeSprintf(buf, sizeof(buf), "ML_NOTFOUND: %s", key);
-					def = buf;
-				}
-				size_t written = atcprintf(buf_p, llen, def, amx, params, &arg);
-				buf_p += written;
-				llen -= written;
-				break;
+				CHECK_ARGS(1);
+				auto currParam = params[arg++];
+				lang = playerlang(*get_amxaddr(amx, currParam));
+				if (!lang)
+					lang = get_amxstring(amx, currParam, 2, len);
 			}
+			else
+			{
+				CHECK_ARGS(0);
+				lang = playerlang(g_langMngr.GetDefLang());
+			}
+
+			const char* key = get_amxstring(amx, params[arg++], 3, len);
+			const char* def = translate(amx, lang, key);
+			if (!def)
+			{
+				static char buf[255];
+				ke::SafeSprintf(buf, sizeof(buf), "ML_NOTFOUND: %s", key);
+				def = buf;
+			}
+
+			const size_t written = atcprintf(buf_p, llen, def, amx, params, &arg);
+			buf_p += written;
+			llen -= written;
+			break;
+		}
 		case 'N':
+		{
+			CHECK_ARGS(0);
+			const cell* addr = get_amxaddr(amx, params[arg]);
+			char buffer[255];
+			if (*addr)
 			{
-				CHECK_ARGS(0);
-				cell *addr = get_amxaddr(amx, params[arg]);
-				char buffer[255];
-				if (*addr)
+				CPlayer* player = nullptr;
+				if (*addr >= 1 && *addr <= gpGlobals->maxClients)
+					player = GET_PLAYER_POINTER_I(*addr);
+
+				if (!player || !player->initialized)
 				{
-					CPlayer *player = NULL;
-
-					if (*addr >= 1 && *addr <= gpGlobals->maxClients)
-					{
-						player = GET_PLAYER_POINTER_I(*addr);
-					}
-
-					if (!player || !player->initialized)
-					{
-						LogError(amx, AMX_ERR_NATIVE, "Client index %d is invalid", *addr);
-						return 0;
-					}
-
-					const char *auth = GETPLAYERAUTHID(player->pEdict);
-					if (!auth || auth[0] == '\0')
-					{
-						auth = "STEAM_ID_PENDING";
-					}
-
-					int userid = GETPLAYERUSERID(player->pEdict);
-					ke::SafeSprintf(buffer, sizeof(buffer), "%s<%d><%s><%s>", player->name.chars(), userid, auth, player->team.chars());
-				}
-				else
-				{
-					ke::SafeSprintf(buffer, sizeof(buffer), "Console<0><Console><Console>");
+					LogError(amx, AMX_ERR_NATIVE, "Client index %d is invalid", *addr);
+					return 0;
 				}
 
-				AddString(&buf_p, llen, buffer, width, prec);
-				arg++;
-				break;
+				const char* auth = GETPLAYERAUTHID(player->pEdict);
+				if (!auth || auth[0] == '\0')
+					auth = "STEAM_ID_PENDING";
+
+				ke::SafeSprintf(buffer, sizeof(buffer), "%s<%d><%s><%s>", player->name.chars(), GETPLAYERUSERID(player->pEdict), auth, player->team.chars());
 			}
+			else
+			{
+				ke::SafeSprintf(buffer, sizeof(buffer), "Console<0><Console><Console>");
+			}
+
+			AddString(&buf_p, llen, buffer, width, prec);
+			arg++;
+			break;
+		}
 		case 'n':
+		{
+			CHECK_ARGS(0);
+			const cell* addr = get_amxaddr(amx, params[arg]);
+			const char* name = "Console";
+
+			if (*addr)
 			{
-				CHECK_ARGS(0);
-				cell *addr = get_amxaddr(amx, params[arg]);
-				const char *name = "Console";
+				CPlayer* player = nullptr;
+				if (*addr >= 1 && *addr <= gpGlobals->maxClients)
+					player = GET_PLAYER_POINTER_I(*addr);
 
-				if (*addr)
+				if (!player || !player->initialized)
 				{
-					CPlayer *player = NULL;
-
-					if (*addr >= 1 && *addr <= gpGlobals->maxClients)
-					{
-						player = GET_PLAYER_POINTER_I(*addr);
-					}
-
-					if (!player || !player->initialized)
-					{
-						LogError(amx, AMX_ERR_NATIVE, "Client index %d is invalid", *addr);
-						return 0;
-					}
-
-					name = player->name.chars();
+					LogError(amx, AMX_ERR_NATIVE, "Client index %d is invalid", *addr);
+					return 0;
 				}
-			
-				AddString(&buf_p, llen, name, width, prec);
-				arg++;
-				break;
+
+				name = player->name.chars();
 			}
+
+			AddString(&buf_p, llen, name, width, prec);
+			arg++;
+			break;
+		}
 		case '%':
+		{
 			*buf_p++ = static_cast<D>(ch);
 			if (!llen)
 				goto done;
 			llen--;
 			break;
+		}
 		case '\0':
+		{
 			*buf_p++ = static_cast<D>('%');
 			if (!llen)
 				goto done;
 			llen--;
 			goto done;
 			break;
+		}
 		default:
+		{
 			*buf_p++ = static_cast<D>(ch);
 			if (!llen)
 				goto done;
 			llen--;
 			break;
+		}
 		}
 	}
 
@@ -807,7 +782,7 @@ done:
 		*(buf_p - llen) = static_cast<D>(0);
 	}
 
-	return maxlen-llen;
+	return maxlen - llen;
 }
 
 /**
@@ -816,13 +791,13 @@ done:
  *  will have extern problems.  For each case you need, add dummy code
  *  here.
  */
-void __WHOA_DONT_CALL_ME_PLZ_K_lol_o_O()
+void __WHOA_DONT_CALL_ME_PLZ_K_lol_o_O(void) // who wants to?
 {
 	//acsprintf
-	atcprintf((cell *)NULL, 0, (const char *)NULL, NULL, NULL, NULL);
+	atcprintf((cell*)nullptr, 0, (const char*)nullptr, nullptr, nullptr, nullptr);
 	//accprintf
-	atcprintf((cell *)NULL, 0, (cell *)NULL, NULL, NULL, NULL);
+	atcprintf((cell*)nullptr, 0, (cell *)nullptr, nullptr, nullptr, nullptr);
 	//ascprintf
-	atcprintf((char *)NULL, 0, (cell *)NULL, NULL, NULL, NULL);
+	atcprintf((char*)nullptr, 0, (cell *)nullptr, nullptr, nullptr, nullptr);
 }
 

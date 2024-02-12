@@ -10,10 +10,16 @@
 #include "amxmodx.h"
 #include "fakemeta.h"
 
-int LoadMetamodPlugin(const char *path, void **handle, PLUG_LOADTIME now)
+int LoadMetamodPlugin(const char *path, void **handle, const PLUG_LOADTIME now)
 {
+	if (!*handle)
+	{
+		LOG_MESSAGE(PLID, "Can't Attach Module \"%s\".", path);
+		return 0;
+	}
+
 	int err = 0;
-	if ( (err = LOAD_PLUGIN(PLID, path, now, handle)) || !*handle)
+	if ((err = LOAD_PLUGIN(PLID, path, now, handle)))
 	{
 		LOG_MESSAGE(PLID, "Can't Attach Module \"%s\".", path);
 		return 0;
@@ -25,9 +31,7 @@ int LoadMetamodPlugin(const char *path, void **handle, PLUG_LOADTIME now)
 int UnloadMetamodPlugin(void *handle)
 {
 	if (UNLOAD_PLUGIN_BY_HANDLE(PLID, (void *)handle, PT_ANYTIME, PNL_PLUGIN))
-	{
 		return 0;
-	}
 
 	return 1;
 }

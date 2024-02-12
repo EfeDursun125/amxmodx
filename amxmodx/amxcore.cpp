@@ -137,7 +137,7 @@ static proplist* list_finditem(proplist* root, cell id, char* name, cell value, 
         } /* while */
     } /* if */
 
-    if (pred != nullptr)
+    if (pred)
         *pred = prev;
 
     return item;
@@ -195,7 +195,7 @@ static cell AMX_NATIVE_CALL setarg(AMX* amx, cell* params)
         return 0;
 
     /* set the value indirectly */
-    *(cell*)(data + (int)value) = params[3];
+    *(cell*)(data + value) = params[3];
     return 1;
 }
 
